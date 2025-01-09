@@ -1,0 +1,18 @@
+{
+  "domain": "ryse",
+  "name": "RYSE",
+  "version": "1.0.0",
+  "documentation": "https://www.helloryse.com/",
+  "dependencies": ["bluetooth_adapters"],
+  "codeowners": ["@ryse_github"],
+  "requirements": ["bleak==0.22.3"],
+  "iot_class": "local_push",
+  "config_flow": true,
+  "bluetooth": [
+    {
+      "service_uuid": "a72f2800-b0bd-498b-b4cd-4a3901388238"
+    }
+  ],
+  "logo": "ryse_logo.png",
+  "icon": "ryse_icon.png"
+}
