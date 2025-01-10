@@ -5,19 +5,25 @@ import logging
 _LOGGER = logging.getLogger(__name__)
 
 class RyseBLEDevice:
-    def __init__(self, address, rx_uuid, tx_uuid):
+    def __init__(self, address=None, rx_uuid=None, tx_uuid=None):
         self.address = address
         self.rx_uuid = rx_uuid
         self.tx_uuid = tx_uuid
         self.client = None
 
     async def pair(self):
+        if not self.address:
+            _LOGGER.error("No device address provided for pairing.")
+            return False
         _LOGGER.info(f"Pairing with device {self.address}")
         self.client = BleakClient(self.address)
-        await self.client.connect()
-        if self.client.is_connected:
-            _LOGGER.info(f"Successfully paired with {self.address}")
-            return True
+        try:
+            await self.client.connect()
+            if self.client.is_connected:
+                _LOGGER.info(f"Successfully paired with {self.address}")
+                return True
+        except Exception as e:
+            _LOGGER.error(f"Error pairing with device: {e}")
         return False
 
     async def get_device_info(self):
