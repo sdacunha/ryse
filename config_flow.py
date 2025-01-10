@@ -1,6 +1,7 @@
 from homeassistant import config_entries
 import voluptuous as vol
 import logging
+from bleak import BleakScanner
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -21,17 +22,33 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Handle the initial step."""
         if user_input is not None:
             _LOGGER.debug("User input received (if any): %s", user_input)
-            # Use hardcoded UUIDs (address will be determined during pairing)
             return self.async_create_entry(
-                title="RYSE BLE Device",
-                data=HARDCODED_UUIDS,
+                title=f"RYSE BLE Device {user_input['device_name']}",
+                data={
+                    "address": user_input["device_address"],
+                    **HARDCODED_UUIDS,
+                },
             )
 
-        # Show form with informational message
+        # Scan for BLE devices
+        devices = await BleakScanner.discover()
+        device_options = {
+            device.address: f"{device.name} ({device.address})"
+            for device in devices if device.name
+        }
+
+        if not device_options:
+            return self.async_abort(reason="no_devices_found")
+
+        _LOGGER.info("Devices found: %s", device_options)
+
+        # Show device selection form
         return self.async_show_form(
             step_id="user",
-            data_schema=vol.Schema({}),  # Empty schema since no input is needed
-            description_placeholders={
-                "info": "This integration will scan for BLE devices and pair automatically. UUIDs for RX/TX are predefined."
-            },
+            data_schema=vol.Schema(
+                {
+                    vol.Required("device_address"): vol.In(device_options),
+                }
+            ),
+            description_placeholders={"info": "Select a BLE device to pair."},
         )

@@ -8,8 +8,8 @@ async def async_setup_entry(hass, entry, async_add_entities):
 class BLEDeviceSensor(SensorEntity):
     def __init__(self, device):
         self._device = device
-        self._attr_name = "BLE Device Sensor"
-        self._attr_unique_id = "ble_device_sensor"
+        self._attr_name = f"BLE Device Sensor {device.address}"
+        self._attr_unique_id = f"ble_device_sensor_{device.address}"
         self._state = None
 
     async def async_update(self):

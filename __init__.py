@@ -16,10 +16,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = entry
 
-    device = RyseBLEDevice(rx_uuid=entry.data['rx_uuid'], tx_uuid=entry.data['tx_uuid'])
+    device = RyseBLEDevice(
+        address=entry.data["address"],
+        rx_uuid=entry.data["rx_uuid"],
+        tx_uuid=entry.data["tx_uuid"],
+    )
 
     async def handle_pair(call):
-        paired = await device.scan_and_pair()
+        paired = await device.pair()
         if paired:
             device_info = await device.get_device_info()
             _LOGGER.info(f"Device Info: {device_info}")
@@ -32,7 +36,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
         _LOGGER.info(f"Read Data: {data}")
 
     async def handle_write(call):
-        data = bytes.fromhex(call.data['data'])
+        data = bytes.fromhex(call.data["data"])
         await device.write_data(data)
 
     hass.services.async_register(DOMAIN, "pair_device", handle_pair)
@@ -44,8 +48,4 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
         hass.config_entries.async_forward_entry_setup(entry, "sensor")
     )
 
-    return True
-
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
-    await hass.config_entries.async_forward_entry_unload(entry, "sensor")
     return True
