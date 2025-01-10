@@ -6,13 +6,12 @@ _LOGGER = logging.getLogger(__name__)
 
 DOMAIN = "ryse"
 
-# Define the schema for the user input
-CONFIG_SCHEMA = vol.Schema({
-    vol.Required("address"): str,
-    vol.Required("rx_uuid"): str,
-    vol.Required("tx_uuid"): str,
-})
-
+# Hardcoded values
+HARDCODED_VALUES = {
+    "address": "00:11:22:33:44:55",
+    "rx_uuid": "your-hardcoded-rx-uuid",
+    "tx_uuid": "your-hardcoded-tx-uuid",
+}
 
 class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for RYSE BLE Device."""
@@ -21,18 +20,17 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(self, user_input=None):
         """Handle the initial step."""
-        errors = {}
-
         if user_input is not None:
-            _LOGGER.debug("User input received: %s", user_input)
-            # Perform basic validation
-            if not user_input["address"] or not user_input["rx_uuid"] or not user_input["tx_uuid"]:
-                errors["base"] = "invalid_input"
-            else:
-                return self.async_create_entry(title="RYSE BLE Device", data=user_input)
+            _LOGGER.debug("User input received (if any): %s", user_input)
+            # Combine hardcoded values and any user input if needed
+            return self.async_create_entry(
+                title="RYSE BLE Device",
+                data=HARDCODED_VALUES,
+            )
 
+        # If no input is required, simply show the form with a message
         return self.async_show_form(
             step_id="user",
-            data_schema=CONFIG_SCHEMA,
-            errors=errors
+            data_schema=vol.Schema({}),  # Empty schema (no user input needed)
+            description_placeholders={"info": "Using hardcoded address and UUIDs."}
         )
