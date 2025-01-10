@@ -17,3 +17,6 @@ send_raw_data:
     data:
       description: "Data to send in hex format"
       example: "01020304"
+
+scan_and_pair:
+  description: "Scan for BLE devices and pair with the first available device"

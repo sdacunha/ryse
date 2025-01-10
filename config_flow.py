@@ -9,8 +9,8 @@ DOMAIN = "ryse"
 # Hardcoded values
 HARDCODED_VALUES = {
     "address": "00:11:22:33:44:55",
-    "rx_uuid": "your-hardcoded-rx-uuid",
-    "tx_uuid": "your-hardcoded-tx-uuid",
+    "rx_uuid": "a72f2802-b0bd-498b-b4cd-4a3901388238",
+    "tx_uuid": "a72f2801-b0bd-498b-b4cd-4a3901388238",
 }
 
 class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
