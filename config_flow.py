@@ -1,7 +1,7 @@
 from homeassistant import config_entries
 import voluptuous as vol
 import logging
-from bleak import BleakScanner
+from bleak import BleakScanner, BleakClient
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -30,14 +30,30 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return self.async_abort(reason="invalid_device_selected")
             
             device_name = selected_device.split(" (")[0]  # Extract device name before "("
+            device_address = user_input["device_address"]
 
-            return self.async_create_entry(
-                title=f"RYSE BLE Device {device_name}",
-                data={
-                    "address": user_input["device_address"],
-                    **HARDCODED_UUIDS,
-                },
-            )
+            try:
+                _LOGGER.debug("Attempting to pair with BLE device: %s (%s)", device_name, device_address)
+                async with BleakClient(device_address) as client:
+                    paired = await client.pair()
+                    if not paired:
+                        _LOGGER.error("Failed to pair with BLE device: %s (%s)", device_name, device_address)
+                        return self.async_abort(reason="pairing_failed")
+
+                _LOGGER.info("Successfully paired with BLE device: %s (%s)", device_name, device_address)
+
+                # Create entry after successful pairing
+                return self.async_create_entry(
+                    title=f"RYSE BLE Device {device_name}",
+                    data={
+                        "address": device_address,
+                        **HARDCODED_UUIDS,
+                    },
+                )
+
+            except Exception as e:
+                _LOGGER.error("Error during pairing process for BLE device: %s (%s): %s", device_name, device_address, e)
+                return self.async_abort(reason="pairing_failed")
 
         # Scan for BLE devices
         devices = await BleakScanner.discover()
@@ -47,6 +63,7 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         }
 
         if not self.device_options:
+            _LOGGER.warning("No BLE devices found during scan.")
             return self.async_abort(reason="no_devices_found")
 
         _LOGGER.info("Devices found: %s", self.device_options)
