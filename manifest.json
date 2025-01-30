@@ -8,10 +8,6 @@
   "requirements": ["bleak==0.22.3"],
   "iot_class": "local_push",
   "config_flow": true,
-  "bluetooth": [
-    {
-      "service_uuid": "a72f2800-b0bd-498b-b4cd-4a3901388238"
-    }
-  ],
+  "bluetooth": [],
   "supported_platforms": ["cover"]
 }

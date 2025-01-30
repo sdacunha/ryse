@@ -1,9 +1,4 @@
-from homeassistant.components.cover import (
-    CoverEntity,
-    SUPPORT_OPEN,
-    SUPPORT_CLOSE,
-    SUPPORT_SET_POSITION,
-)
+from homeassistant.components.cover import CoverEntity, CoverEntityFeature
 from .bluetooth import RyseBLEDevice
 
 async def async_setup_entry(hass, entry, async_add_entities):
@@ -53,4 +48,9 @@ class SmartShadeCover(CoverEntity):
 
     @property
     def supported_features(self):
-        return SUPPORT_OPEN | SUPPORT_CLOSE | SUPPORT_SET_POSITION
+        return (
+            CoverEntityFeature.OPEN |
+            CoverEntityFeature.CLOSE |
+            CoverEntityFeature.SET_POSITION
+        )
+
