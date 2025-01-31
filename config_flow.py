@@ -59,14 +59,15 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         devices = await BleakScanner.discover()
         self.device_options = {
             device.address: f"{device.name} ({device.address})"
-            for device in devices if device.name
+            for device in devices
+            if device.name and 0x0409 in device.metadata.get("manufacturer_data", {})
         }
 
         if not self.device_options:
-            _LOGGER.warning("No BLE devices found during scan.")
+            _LOGGER.warning("No BLE devices found with company identifier 0x0409.")
             return self.async_abort(reason="no_devices_found")
 
-        _LOGGER.info("Devices found: %s", self.device_options)
+        _LOGGER.info("Filtered devices found: %s", self.device_options)
 
         # Show device selection form
         return self.async_show_form(
@@ -76,5 +77,5 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Required("device_address"): vol.In(self.device_options),
                 }
             ),
-            description_placeholders={"info": "Select a BLE device to pair."},
+            description_placeholders={"info": "Select a RYSE BLE device to pair."},
         )
