@@ -44,7 +44,7 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
                 # Create entry after successful pairing
                 return self.async_create_entry(
-                    title=f"RYSE BLE Device {device_name}",
+                    title=f"RYSE gear {device_name}",
                     data={
                         "address": device_address,
                         **HARDCODED_UUIDS,
@@ -77,5 +77,5 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Required("device_address"): vol.In(self.device_options),
                 }
             ),
-            description_placeholders={"info": "Select a RYSE BLE device to pair."},
+            description_placeholders={"info": "Select a RYSE BLE device to pair."}
         )
