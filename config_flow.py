@@ -6,6 +6,7 @@ from bleak import BleakScanner, BleakClient
 _LOGGER = logging.getLogger(__name__)
 
 DOMAIN = "ryse"
+PAIRING_MODE_FLAG = 0x01  # LE Limited Discoverable Mode (standard pairing mode)
 
 # Hardcoded UUIDs
 HARDCODED_UUIDS = {
@@ -57,14 +58,26 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         # Scan for BLE devices
         devices = await BleakScanner.discover()
-        self.device_options = {
-            device.address: f"{device.name} ({device.address})"
-            for device in devices
-            if device.name and 0x0409 in device.metadata.get("manufacturer_data", {})
-        }
+
+        # Debug: Log all discovered devices
+        for device in devices:
+            _LOGGER.debug("Device: %s - Metadata: %s", device.name, device.metadata)
+
+        self.device_options = {}
+
+        for device in devices:
+            if not device.name:
+                continue  # Ignore unnamed devices
+            manufacturer_data = device.metadata.get("manufacturer_data", {})
+            raw_data = manufacturer_data.get(0x0409)  # 0x0409 == 1033
+            if raw_data != None:
+                _LOGGER.debug("Device: %s - raw_data[0]: %X  - raw_data[0] & 0x40 = %d  - raw_data: %s", device.name, raw_data[0], raw_data[0] & 0x40, raw_data)
+                # Check if the pairing mode flag (0x40) is in the first byte
+                if (raw_data[0] & 0x40):
+                    self.device_options[device.address] = f"{device.name} ({device.address})"
 
         if not self.device_options:
-            _LOGGER.warning("No BLE devices found with company identifier 0x0409.")
+            _LOGGER.warning("No BLE devices found in pairing mode (0x40).")
             return self.async_abort(reason="no_devices_found")
 
         _LOGGER.info("Filtered devices found: %s", self.device_options)

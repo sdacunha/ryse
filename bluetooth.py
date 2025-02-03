@@ -23,7 +23,7 @@ class RyseBLEDevice:
                 _LOGGER.info(f"Successfully paired with {self.address}")
                 return True
         except Exception as e:
-            _LOGGER.error(f"Error pairing with device: {e}")
+            _LOGGER.error(f"Error pairing with device {self.address}: {e}", exc_info=True)
         return False
 
     async def get_device_info(self):
