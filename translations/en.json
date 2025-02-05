@@ -2,12 +2,19 @@
     "config": {
         "step": {
             "user": {
-                "title": "Select a RYSE gear to pair.",
-                "description": "Choose a RYSE gear and then click Provision and push the Pair button on the gear.",
+                "title": "Pairing RYSE device",
+                "description": "Please press PAIR button on RYSE device and then OK",
                 "data": {
-                    "device_address": "RYSE gears"
+                    "device_address": "RYSE devices"
                 },
-                "submit": "Provision"
+                "submit": "OK"
+            },
+            "scan": {
+                "title": "Pairing RYSE device",
+                "data": {
+                    "device_address": "RYSE Devices:"
+                },
+                "submit": "PAIR"
             }
         },
         "error": {

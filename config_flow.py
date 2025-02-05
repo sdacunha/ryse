@@ -22,6 +22,19 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(self, user_input=None):
         """Handle the initial step."""
         if user_input is not None:
+            return await self.async_step_scan()
+
+        # Show confirmation popup
+        return self.async_show_form(
+            step_id="user",
+            description_placeholders={"info": "Press OK to start scanning for RYSE BLE devices."},
+            data_schema=vol.Schema({}),  # Empty schema means no input field
+            last_step=False,
+        )
+
+    async def async_step_scan(self, user_input=None):
+        """Handle the BLE device scanning step."""
+        if user_input is not None:
             # Extract device name and address from the selected option
             selected_device = next(
                 (name for addr, name in self.device_options.items() if addr == user_input["device_address"]),
@@ -84,7 +97,7 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         # Show device selection form
         return self.async_show_form(
-            step_id="user",
+            step_id="scan",
             data_schema=vol.Schema(
                 {
                     vol.Required("device_address"): vol.In(self.device_options),
