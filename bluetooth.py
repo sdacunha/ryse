@@ -18,7 +18,7 @@ class RyseBLEDevice:
         _LOGGER.info(f"Pairing with device {self.address}")
         self.client = BleakClient(self.address)
         try:
-            await self.client.connect()
+            await self.client.connect(timeout=30.0)
             if self.client.is_connected:
                 _LOGGER.info(f"Successfully paired with {self.address}")
                 return True

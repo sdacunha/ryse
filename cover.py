@@ -1,5 +1,8 @@
 from homeassistant.components.cover import CoverEntity, CoverEntityFeature
 from .bluetooth import RyseBLEDevice
+import logging
+
+_LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(hass, entry, async_add_entities):
     device = RyseBLEDevice(entry.data['address'], entry.data['rx_uuid'], entry.data['tx_uuid'])
@@ -32,11 +35,19 @@ class SmartShadeCover(CoverEntity):
 
     async def async_update(self):
         """Fetch the current state and position from the device."""
-        if await self._device.pair():
+        if not self._device.client or not self._device.client.is_connected:
+            paired = await self._device.pair()
+            if not paired:
+                _LOGGER.warning("Failed to pair with device. Skipping update.")
+                return
+
+        try:
             data = await self._device.read_data()
-            self._current_position = data[0]  # Assuming the position is the first byte of `data`
-            self._state = "open" if self._current_position > 0 else "closed"
-            await self._device.unpair()
+            if data:
+                self._current_position = data[0]  # Assuming the position is the first byte of `data`
+                self._state = "open" if self._current_position > 0 else "closed"
+        except Exception as e:
+            _LOGGER.error(f"Error reading device data: {e}")
 
     @property
     def is_closed(self):
