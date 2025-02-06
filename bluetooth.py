@@ -45,7 +45,7 @@ class RyseBLEDevice:
     async def read_data(self):
         if self.client:
             data = await self.client.read_gatt_char(self.rx_uuid)
-            _LOGGER.info(f"Received: {data}")
+            _LOGGER.info(f"Received: {data.hex()}")
             return data
 
     async def write_data(self, data):

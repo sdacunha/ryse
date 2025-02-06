@@ -10,8 +10,8 @@ PAIRING_MODE_FLAG = 0x01  # LE Limited Discoverable Mode (standard pairing mode)
 
 # Hardcoded UUIDs
 HARDCODED_UUIDS = {
-    "rx_uuid": "a72f2802-b0bd-498b-b4cd-4a3901388238",
-    "tx_uuid": "a72f2801-b0bd-498b-b4cd-4a3901388238",
+    "rx_uuid": "a72f2801-b0bd-498b-b4cd-4a3901388238",
+    "tx_uuid": "a72f2802-b0bd-498b-b4cd-4a3901388238",
 }
 
 class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
