@@ -21,10 +21,26 @@ class RyseBLEDevice:
             await self.client.connect(timeout=30.0)
             if self.client.is_connected:
                 _LOGGER.info(f"Successfully paired with {self.address}")
+                # Subscribe to notifications
+                await self.client.start_notify(self.rx_uuid, self._notification_handler)
                 return True
         except Exception as e:
             _LOGGER.error(f"Error pairing with device {self.address}: {e}", exc_info=True)
         return False
+
+    async def _notification_handler(self, sender, data):
+        """Callback function for handling received BLE notifications."""
+        if len(data) >= 5 and data[0] == 0xF5 and data[2] == 0x01 and data[3] == 0x18:
+            #ignore REPORT USER TARGET data
+            return
+        _LOGGER.info(f"Received notification from {data.hex()}")
+        if len(data) >= 5 and data[0] == 0xF5 and data[2] == 0x01 and data[3] == 0x07:
+            new_position = data[4]  # Extract the position byte
+            _LOGGER.info(f"Received valid notification, updating position: {new_position}")
+
+            # Notify cover.py about the position update
+            if hasattr(self, "update_callback"):
+                await self.update_callback(new_position)
 
     async def get_device_info(self):
         if self.client:
@@ -45,7 +61,9 @@ class RyseBLEDevice:
     async def read_data(self):
         if self.client:
             data = await self.client.read_gatt_char(self.rx_uuid)
-            _LOGGER.info(f"Received: {data.hex()}")
+            if len(data) < 5 or data[0] != 0xF5 or data[2] != 0x01 or data[3] != 0x18:
+                #ignore REPORT USER TARGET data
+                _LOGGER.info(f"Received: {data.hex()}")
             return data
 
     async def write_data(self, data):

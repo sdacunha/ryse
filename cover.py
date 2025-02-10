@@ -8,21 +8,14 @@ async def async_setup_entry(hass, entry, async_add_entities):
     device = RyseBLEDevice(entry.data['address'], entry.data['rx_uuid'], entry.data['tx_uuid'])
     async_add_entities([SmartShadeCover(device)])
 
-def build_position_packet(address: str, pos: int) -> bytes:
+def build_position_packet(pos: int) -> bytes:
     """Convert MAC address to reversed hex array, prepend a prefix with a position last byte, and append a checksum."""
 
     # Ensure position is a valid byte (0-100)
     if not (0 <= pos <= 100):
         raise ValueError("position must be between 0 and 255")
 
-    # Convert MAC address to reversed hex array
-    mac_bytes = bytes(reversed([int(x, 16) for x in address.split(":")]))
-
-    # Define the prefix with a variable last byte
-    prefix = bytes([0xF5, 0x0A, 0x01, 0x01, 0x01, pos])
-
-    # Concatenate prefix with reversed MAC address
-    data_bytes = prefix + mac_bytes
+    data_bytes = bytes([0xF5, 0x03, 0x01, 0x01, pos])
 
     # Compute checksum (sum of bytes from the 3rd byte onward, modulo 256)
     checksum = sum(data_bytes[2:]) % 256
@@ -38,16 +31,26 @@ class SmartShadeCover(CoverEntity):
         self._state = None
         self._current_position = None
 
+        # Register the callback
+        self._device.update_callback = self._update_position
+
+    async def _update_position(self, position):
+        """Update cover position when receiving notification."""
+        self._current_position = position
+        self._state = "open" if position > 0 else "closed"
+        _LOGGER.info(f"Updated cover position: {position}")
+        self.async_write_ha_state()  # Notify Home Assistant about the state change
+
     async def async_open_cover(self, **kwargs):
         """Open the shade."""
-        pdata = build_position_packet(self._device.address, 0x00)
+        pdata = build_position_packet(0x00)
         await self._device.write_data(pdata)
         _LOGGER.info(f"Binary packet to change position to open: {pdata.hex()}")
         self._state = "open"
 
     async def async_close_cover(self, **kwargs):
         """Close the shade."""
-        pdata = build_position_packet(self._device.address, 0x64)
+        pdata = build_position_packet(0x64)
         await self._device.write_data(pdata)
         _LOGGER.info(f"Binary packet to change position to close: {pdata.hex()}")
         self._state = "closed"
@@ -55,7 +58,7 @@ class SmartShadeCover(CoverEntity):
     async def async_set_cover_position(self, **kwargs):
         """Set the shade to a specific position."""
         position = kwargs.get("position", 0)
-        pdata = build_position_packet(self._device.address, position)
+        pdata = build_position_packet(position)
         await self._device.write_data(pdata)
         _LOGGER.info(f"Binary packet to change position to specific position: {pdata.hex()}")
         self._current_position = position
