@@ -74,7 +74,7 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         # Debug: Log all discovered devices
         for device in devices:
-            _LOGGER.debug("Device: %s - Advertisement Data: %s", device.name, device.details)
+            _LOGGER.debug("(2) Device Name: %s - Device Address: %s - Advertisement Data: %s", device.name, device.address, device.details)
 
         self.device_options = {}
 
@@ -90,7 +90,7 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # Check for manufacturer ID 0x0409 (1033 in decimal)
             if 1033 in manufacturer_data:
                 raw_data = manufacturer_data[1033]  # Extract the bytearray for manufacturer ID 1033
-                _LOGGER.debug("Device: %s - raw_data: %s", device.name, raw_data.hex())
+                _LOGGER.debug("Device Name: %s - Device Address: %s - raw_data: %s", device.name, device.address, raw_data.hex())
 
                 # Check if the pairing mode flag (0x40) is in the first byte
                 if len(raw_data) > 0 and (raw_data[0] & 0x40):
