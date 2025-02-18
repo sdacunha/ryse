@@ -74,24 +74,17 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         # Debug: Log all discovered devices
         for device in devices:
-            _LOGGER.debug("(2) Device Name: %s - Device Address: %s - Advertisement Data: %s", device.name, device.address, device.details)
+            _LOGGER.debug("Device Name: %s - Device Address: %s - MetaData: %s", device.name, device.address, device.metadata)
 
         self.device_options = {}
 
         for device in devices:
             if not device.name:
                 continue  # Ignore unnamed devices
-
-            advertisement_data = device.details
-            # Access ManufacturerData from the nested props dictionary
-            props = advertisement_data.get("props", {})
-            manufacturer_data = props.get("ManufacturerData", {})
-
-            # Check for manufacturer ID 0x0409 (1033 in decimal)
-            if 1033 in manufacturer_data:
-                raw_data = manufacturer_data[1033]  # Extract the bytearray for manufacturer ID 1033
-                _LOGGER.debug("Device Name: %s - Device Address: %s - raw_data: %s", device.name, device.address, raw_data.hex())
-
+            manufacturer_data = device.metadata.get("manufacturer_data", {})
+            raw_data = manufacturer_data.get(0x0409)  # 0x0409 == 1033
+            if raw_data != None:
+                _LOGGER.debug("Device: %s - address: %s - raw_data[0]: %X  - raw_data[0] & 0x40 = %d  - raw_data: %s", device.name, device.address, raw_data[0], raw_data[0] & 0x40, raw_data)
                 # Check if the pairing mode flag (0x40) is in the first byte
                 if len(raw_data) > 0 and (raw_data[0] & 0x40):
                     self.device_options[device.address] = f"{device.name} ({device.address})"
