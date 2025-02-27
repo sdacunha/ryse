@@ -48,11 +48,29 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             try:
                 _LOGGER.debug("Attempting to pair with BLE device: %s (%s)", device_name, device_address)
-                async with BleakClient(device_address) as client:
-                    paired = await client.pair()
-                    if not paired:
-                        _LOGGER.error("Failed to pair with BLE device: %s (%s)", device_name, device_address)
-                        return self.async_abort(reason="pairing_failed")
+
+                client = BleakClient(device_address)
+                try:
+                    await client.connect()
+                    if client.is_connected():
+                        _LOGGER.info(f"Connected to {device_address}")
+
+                        # Pairing (Only required if your device needs pairing)
+                        try:
+                            paired = await client.pair()
+                            if not paired:
+                                _LOGGER.error("Failed to pair with BLE device: %s (%s)", device_name, device_address)
+                                return self.async_abort(reason="pairing_failed")
+                            else:
+                                _LOGGER.info("Paired successfully")
+                        except Exception as e:
+                            _LOGGER.warning(f"Pairing failed: {e}")
+                    else:
+                        _LOGGER.error("Failed to connect")
+                        return False
+                except Exception as e:
+                    _LOGGER.error(f"Connection error: {e}")
+                    return False
 
                 _LOGGER.info("Successfully paired with BLE device: %s (%s)", device_name, device_address)
 
