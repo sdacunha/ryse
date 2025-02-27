@@ -41,7 +41,7 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 None,
             )
             if not selected_device:
-                return self.async_abort(reason="invalid_device_selected")
+                return self.async_abort(reason="Invalid selected device!")
             
             device_name = selected_device.split(" (")[0]  # Extract device name before "("
             device_address = user_input["device_address"]
@@ -60,7 +60,7 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             paired = await client.pair()
                             if not paired:
                                 _LOGGER.error("Failed to pair with BLE device: %s (%s)", device_name, device_address)
-                                return self.async_abort(reason="pairing_failed")
+                                return self.async_abort(reason="Pairing failed!")
                             else:
                                 _LOGGER.info("Paired successfully")
                         except Exception as e:
@@ -85,7 +85,7 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             except Exception as e:
                 _LOGGER.error("Error during pairing process for BLE device: %s (%s): %s", device_name, device_address, e)
-                return self.async_abort(reason="pairing_failed")
+                return self.async_abort(reason="Pairing failed!")
 
         # Scan for BLE devices
         devices = await BleakScanner.discover()
@@ -109,7 +109,7 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if not self.device_options:
             _LOGGER.warning("No BLE devices found in pairing mode (0x40).")
-            return self.async_abort(reason="no_devices_found")
+            return self.async_abort(reason="No RYSE devices found in pairing mode!")
 
         _LOGGER.info("Filtered devices found: %s", self.device_options)
 
