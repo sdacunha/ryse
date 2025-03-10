@@ -2,6 +2,8 @@ from homeassistant import config_entries
 import voluptuous as vol
 import logging
 from bleak import BleakScanner, BleakClient
+import subprocess
+import asyncio
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -49,6 +51,16 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             try:
                 _LOGGER.debug("Attempting to pair with BLE device: %s (%s)", device_name, device_address)
 
+                # Start bluetoothctl in interactive mode
+                process = subprocess.Popen(
+                    ["bluetoothctl"],
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    bufsize=1
+                )
+
                 client = BleakClient(device_address)
                 try:
                     await client.connect()
@@ -72,6 +84,12 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     _LOGGER.error(f"Connection error: {e}")
                     return False
 
+                await asyncio.sleep(5)
+                process.stdin.close()
+                process.stdout.close()
+                process.stderr.close()
+                process.wait()
+
                 _LOGGER.info("Successfully paired with BLE device: %s (%s)", device_name, device_address)
 
                 # Create entry after successful pairing
@@ -94,11 +112,19 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         for device in devices:
             _LOGGER.debug("Device Name: %s - Device Address: %s - MetaData: %s", device.name, device.address, device.metadata)
 
+        # Get existing entries to exclude already configured devices
+        existing_entries = self._async_current_entries()
+        existing_addresses = {entry.data["address"] for entry in existing_entries}
+
         self.device_options = {}
 
         for device in devices:
             if not device.name:
                 continue  # Ignore unnamed devices
+            if device.address in existing_addresses:
+                _LOGGER.debug("Skipping already configured device: %s (%s)", device.name, device.address)
+                continue  # Skip already configured devices
+
             manufacturer_data = device.metadata.get("manufacturer_data", {})
             raw_data = manufacturer_data.get(0x0409)  # 0x0409 == 1033
             if raw_data != None:
