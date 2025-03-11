@@ -23,6 +23,17 @@ def build_position_packet(pos: int) -> bytes:
     # Append checksum
     return data_bytes + bytes([checksum])
 
+def build_get_position_packet() -> bytes:
+    """Build raw data to send to the RYSE ble device to retrieve current position"""
+
+    data_bytes = bytes([0xF5, 0x02, 0x01, 0x03])
+
+    # Compute checksum (sum of bytes from the 3rd byte onward, modulo 256)
+    checksum = sum(data_bytes[2:]) % 256
+
+    # Append checksum
+    return data_bytes + bytes([checksum])
+
 class SmartShadeCover(CoverEntity):
     def __init__(self, device):
         self._device = device
@@ -36,9 +47,10 @@ class SmartShadeCover(CoverEntity):
 
     async def _update_position(self, position):
         """Update cover position when receiving notification."""
-        self._current_position = position
-        self._state = "open" if position > 0 else "closed"
-        _LOGGER.info(f"Updated cover position: {position}")
+        if 0 <= position <= 100:
+            self._current_position = position
+            self._state = "open" if position > 0 else "closed"
+            _LOGGER.info(f"Updated cover position: {position}")
         self.async_write_ha_state()  # Notify Home Assistant about the state change
 
     async def async_open_cover(self, **kwargs):
@@ -73,10 +85,9 @@ class SmartShadeCover(CoverEntity):
                 return
 
         try:
-            data = await self._device.read_data()
-            if data:
-                self._current_position = data[0]  # Assuming the position is the first byte of `data`
-                self._state = "open" if self._current_position > 0 else "closed"
+            if self._current_position is None:
+                bytesinfo = build_get_position_packet()
+                await self._device.write_data(bytesinfo)
         except Exception as e:
             _LOGGER.error(f"Error reading device data: {e}")
 
@@ -85,8 +96,14 @@ class SmartShadeCover(CoverEntity):
         return self._state == "closed"
 
     @property
-    def current_cover_position(self):
-        return self._current_position
+    def current_cover_position(self) -> int | None:
+        """Return current cover position."""
+        if self._current_position is None:
+            return 50
+        if not (0 <= self._current_position <= 100):
+            _LOGGER.warning(f"Invalid position value detected: {self._current_position}")
+            return 50  # Prevent invalid values
+        return int(self._current_position)
 
     @property
     def supported_features(self):

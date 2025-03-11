@@ -64,7 +64,8 @@ class RyseBLEDevice:
             if len(data) < 5 or data[0] != 0xF5 or data[2] != 0x01 or data[3] != 0x18:
                 #ignore REPORT USER TARGET data
                 _LOGGER.info(f"Received: {data.hex()}")
-            return data
+                return data
+            return None
 
     async def write_data(self, data):
         if self.client:

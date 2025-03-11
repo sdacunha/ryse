@@ -33,7 +33,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
 
     async def handle_read(call):
         data = await device.read_data()
-        _LOGGER.info(f"Read Data: {data}")
+        if data:
+            _LOGGER.info(f"Read Data: {data}")
 
     async def handle_write(call):
         data = bytes.fromhex(call.data["data"])
