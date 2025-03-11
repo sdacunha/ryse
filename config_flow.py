@@ -16,6 +16,13 @@ HARDCODED_UUIDS = {
     "tx_uuid": "a72f2802-b0bd-498b-b4cd-4a3901388238",
 }
 
+def close_process(process):
+    process.stdin.close()
+    process.stdout.close()
+    process.stderr.close()
+    process.wait()
+
+
 class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for RYSE BLE Device."""
 
@@ -72,6 +79,7 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             paired = await client.pair()
                             if not paired:
                                 _LOGGER.error("Failed to pair with BLE device: %s (%s)", device_name, device_address)
+                                close_process(process)
                                 return self.async_abort(reason="Pairing failed!")
                             else:
                                 _LOGGER.info("Paired successfully")
@@ -79,16 +87,15 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             _LOGGER.warning(f"Pairing failed: {e}")
                     else:
                         _LOGGER.error("Failed to connect")
+                        close_process(process)
                         return False
                 except Exception as e:
                     _LOGGER.error(f"Connection error: {e}")
+                    close_process(process)
                     return False
 
                 await asyncio.sleep(5)
-                process.stdin.close()
-                process.stdout.close()
-                process.stderr.close()
-                process.wait()
+                close_process(process)
 
                 _LOGGER.info("Successfully paired with BLE device: %s (%s)", device_name, device_address)
 
