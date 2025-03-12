@@ -6,7 +6,7 @@ Download the RYSE home Assistant component from: https://github.com/mohamedkalle
 
 and put it under `/homeassistant/custom_components` with the name `ryse`.
 
-the tree would be be like the following:
+the tree should be be like the following:
 
 
     /homeassistant

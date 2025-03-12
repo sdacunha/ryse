@@ -48,8 +48,8 @@ class SmartShadeCover(CoverEntity):
     async def _update_position(self, position):
         """Update cover position when receiving notification."""
         if 0 <= position <= 100:
-            self._current_position = position
-            self._state = "open" if position > 0 else "closed"
+            self._current_position = 100 - position
+            self._state = "open" if position < 100 else "closed"
             _LOGGER.info(f"Updated cover position: {position}")
         self.async_write_ha_state()  # Notify Home Assistant about the state change
 
@@ -69,12 +69,11 @@ class SmartShadeCover(CoverEntity):
 
     async def async_set_cover_position(self, **kwargs):
         """Set the shade to a specific position."""
-        position = kwargs.get("position", 0)
+        position = 100 - kwargs.get("position", 0)
         pdata = build_position_packet(position)
         await self._device.write_data(pdata)
         _LOGGER.info(f"Binary packet to change position to specific position: {pdata.hex()}")
-        self._current_position = position
-        self._state = "open" if position > 0 else "closed"
+        self._state = "open" if position < 100 else "closed"
 
     async def async_update(self):
         """Fetch the current state and position from the device."""
