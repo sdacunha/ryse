@@ -13,7 +13,7 @@ def build_position_packet(pos: int) -> bytes:
 
     # Ensure position is a valid byte (0-100)
     if not (0 <= pos <= 100):
-        raise ValueError("position must be between 0 and 255")
+        raise ValueError("position must be between 0 and 100")
 
     data_bytes = bytes([0xF5, 0x03, 0x01, 0x01, pos])
 

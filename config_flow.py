@@ -22,7 +22,6 @@ def close_process(process):
     process.stderr.close()
     process.wait()
 
-
 class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for RYSE BLE Device."""
 
@@ -100,7 +99,6 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             close_process(process)
                             return False
                         await asyncio.sleep(3)  # Wait before retrying
-
 
                 await asyncio.sleep(5)
                 close_process(process)

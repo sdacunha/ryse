@@ -9,10 +9,12 @@ _LOGGER = logging.getLogger(__name__)
 DOMAIN = "ryse"
 
 async def async_setup(hass: HomeAssistant, config: dict):
+    """Set up the RYSE component."""
     _LOGGER.debug("Setting up RYSE Device integration")
     return True
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
+    """Set up RYSE from a config entry."""
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = entry
 
@@ -23,20 +25,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     )
 
     async def handle_pair(call):
+        """Handle the pair_device service call."""
         paired = await device.pair()
         if paired:
             device_info = await device.get_device_info()
-            _LOGGER.debug(f"Getting Device Info")
+            _LOGGER.debug("Getting Device Info")
 
     async def handle_unpair(call):
+        """Handle the unpair_device service call."""
         await device.unpair()
 
     async def handle_read(call):
+        """Handle the read_info service call."""
         data = await device.read_data()
         if data:
-            _LOGGER.debug(f"Reading Data")
+            _LOGGER.debug("Reading Data")
 
     async def handle_write(call):
+        """Handle the send_raw_data service call."""
         data = bytes.fromhex(call.data["data"])
         await device.write_data(data)
 
