@@ -9,7 +9,7 @@ _LOGGER = logging.getLogger(__name__)
 DOMAIN = "ryse"
 
 async def async_setup(hass: HomeAssistant, config: dict):
-    _LOGGER.info("Setting up RYSE Device integration")
+    _LOGGER.debug("Setting up RYSE Device integration")
     return True
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
@@ -26,7 +26,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
         paired = await device.pair()
         if paired:
             device_info = await device.get_device_info()
-            _LOGGER.info(f"Device Info: {device_info}")
+            _LOGGER.debug(f"Getting Device Info")
 
     async def handle_unpair(call):
         await device.unpair()
@@ -34,7 +34,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     async def handle_read(call):
         data = await device.read_data()
         if data:
-            _LOGGER.info(f"Read Data: {data}")
+            _LOGGER.debug(f"Reading Data")
 
     async def handle_write(call):
         data = bytes.fromhex(call.data["data"])

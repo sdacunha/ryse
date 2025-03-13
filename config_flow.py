@@ -75,7 +75,7 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         client = BleakClient(device_address)
                         await client.connect()
                         if client.is_connected:
-                            _LOGGER.info(f"Connected to {device_address}")
+                            _LOGGER.debug(f"Connected to {device_address}")
 
                             # Pairing (Only required if your device needs pairing)
                             try:
@@ -85,7 +85,7 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                                     close_process(process)
                                     return self.async_abort(reason="Pairing failed!")
                                 else:
-                                    _LOGGER.info("Paired successfully")
+                                    _LOGGER.debug("Paired successfully")
                                     break  # Exit the retry loop on success
                             except Exception as e:
                                 _LOGGER.warning(f"Pairing failed: {e}")
@@ -105,7 +105,7 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 await asyncio.sleep(5)
                 close_process(process)
 
-                _LOGGER.info("Successfully paired with BLE device: %s (%s)", device_name, device_address)
+                _LOGGER.debug("Successfully paired with BLE device: %s (%s)", device_name, device_address)
 
                 # Create entry after successful pairing
                 return self.async_create_entry(
@@ -125,7 +125,7 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         # Debug: Log all discovered devices
         for device in devices:
-            _LOGGER.debug("Device Name: %s - Device Address: %s - MetaData: %s", device.name, device.address, device.metadata)
+            _LOGGER.debug("Device Name: %s - Device Address: %s", device.name, device.address)
 
         # Get existing entries to exclude already configured devices
         existing_entries = self._async_current_entries()
@@ -143,7 +143,7 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             manufacturer_data = device.metadata.get("manufacturer_data", {})
             raw_data = manufacturer_data.get(0x0409)  # 0x0409 == 1033
             if raw_data != None:
-                _LOGGER.debug("Device: %s - address: %s - raw_data[0]: %X  - raw_data[0] & 0x40 = %d  - raw_data: %s", device.name, device.address, raw_data[0], raw_data[0] & 0x40, raw_data)
+                _LOGGER.debug("Found RYSE Device in Pairing mode: %s - address: %s", device.name, device.address)
                 # Check if the pairing mode flag (0x40) is in the first byte
                 if len(raw_data) > 0 and (raw_data[0] & 0x40):
                     self.device_options[device.address] = f"{device.name} ({device.address})"
@@ -151,8 +151,6 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if not self.device_options:
             _LOGGER.warning("No BLE devices found in pairing mode (0x40).")
             return self.async_abort(reason="No RYSE devices found in pairing mode!")
-
-        _LOGGER.info("Filtered devices found: %s", self.device_options)
 
         # Show device selection form
         return self.async_show_form(

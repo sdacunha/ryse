@@ -50,21 +50,21 @@ class SmartShadeCover(CoverEntity):
         if 0 <= position <= 100:
             self._current_position = 100 - position
             self._state = "open" if position < 100 else "closed"
-            _LOGGER.info(f"Updated cover position: {position}")
+            _LOGGER.debug(f"Updated cover position: {position}")
         self.async_write_ha_state()  # Notify Home Assistant about the state change
 
     async def async_open_cover(self, **kwargs):
         """Open the shade."""
         pdata = build_position_packet(0x00)
         await self._device.write_data(pdata)
-        _LOGGER.info(f"Binary packet to change position to open: {pdata.hex()}")
+        _LOGGER.debug(f"Binary packet to change position to open")
         self._state = "open"
 
     async def async_close_cover(self, **kwargs):
         """Close the shade."""
         pdata = build_position_packet(0x64)
         await self._device.write_data(pdata)
-        _LOGGER.info(f"Binary packet to change position to close: {pdata.hex()}")
+        _LOGGER.debug(f"Binary packet to change position to close")
         self._state = "closed"
 
     async def async_set_cover_position(self, **kwargs):
@@ -72,7 +72,7 @@ class SmartShadeCover(CoverEntity):
         position = 100 - kwargs.get("position", 0)
         pdata = build_position_packet(position)
         await self._device.write_data(pdata)
-        _LOGGER.info(f"Binary packet to change position to specific position: {pdata.hex()}")
+        _LOGGER.debug(f"Binary packet to change position to a specific position")
         self._state = "open" if position < 100 else "closed"
 
     async def async_update(self):
