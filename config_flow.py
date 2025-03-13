@@ -68,31 +68,39 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     bufsize=1
                 )
 
-                client = BleakClient(device_address)
-                try:
-                    await client.connect()
-                    if client.is_connected():
-                        _LOGGER.info(f"Connected to {device_address}")
+                max_retries = 3
+                retry_count = 0
+                while retry_count < max_retries:
+                    try:
+                        client = BleakClient(device_address)
+                        await client.connect()
+                        if client.is_connected:
+                            _LOGGER.info(f"Connected to {device_address}")
 
-                        # Pairing (Only required if your device needs pairing)
-                        try:
-                            paired = await client.pair()
-                            if not paired:
-                                _LOGGER.error("Failed to pair with BLE device: %s (%s)", device_name, device_address)
-                                close_process(process)
-                                return self.async_abort(reason="Pairing failed!")
-                            else:
-                                _LOGGER.info("Paired successfully")
-                        except Exception as e:
-                            _LOGGER.warning(f"Pairing failed: {e}")
-                    else:
-                        _LOGGER.error("Failed to connect")
-                        close_process(process)
-                        return False
-                except Exception as e:
-                    _LOGGER.error(f"Connection error: {e}")
-                    close_process(process)
-                    return False
+                            # Pairing (Only required if your device needs pairing)
+                            try:
+                                paired = await client.pair()
+                                if not paired:
+                                    _LOGGER.error("Failed to pair with BLE device: %s (%s)", device_name, device_address)
+                                    close_process(process)
+                                    return self.async_abort(reason="Pairing failed!")
+                                else:
+                                    _LOGGER.info("Paired successfully")
+                                    break  # Exit the retry loop on success
+                            except Exception as e:
+                                _LOGGER.warning(f"Pairing failed: {e}")
+                        else:
+                            _LOGGER.error("Failed to connect")
+                            close_process(process)
+                            return False
+                    except Exception as e:
+                        _LOGGER.error(f"Connection error (attempt {retry_count + 1}): {e}")
+                        retry_count += 1
+                        if retry_count >= max_retries:
+                            close_process(process)
+                            return False
+                        await asyncio.sleep(3)  # Wait before retrying
+
 
                 await asyncio.sleep(5)
                 close_process(process)
