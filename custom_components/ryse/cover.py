@@ -1,5 +1,5 @@
 from homeassistant.components.cover import CoverEntity, CoverEntityFeature
-from .bluetooth import RyseBLEDevice
+from custom_components.ryse.bluetooth import RyseBLEDevice
 import logging
 
 _LOGGER = logging.getLogger(__name__)

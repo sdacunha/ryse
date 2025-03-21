@@ -4,9 +4,9 @@ A full-featured Homeassistant component to drive RYSE BLE devices.
 ## Installation
 Download the RYSE home Assistant component from: https://github.com/mohamedkallel82/ryse/archive/refs/heads/main.zip
 
-and put it under `/homeassistant/custom_components` with the name `ryse`.
+Unzip it and then copy the folder `custom_components/ryse`  to your HomeAssistant under `/homeassistant/custom_components`.
 
-the tree should be be like the following:
+the tree in your Home Assistant should be be like the following:
 
 
     /homeassistant
