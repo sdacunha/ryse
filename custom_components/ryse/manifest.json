@@ -11,7 +11,7 @@
   "config_flow": true,
   "bluetooth": [
     {
-      "local_name": "RYSE*"
+      "local_name": "RZSS*"
     }
   ],
   "supported_platforms": ["cover", "sensor"]

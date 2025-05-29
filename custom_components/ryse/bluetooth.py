@@ -25,7 +25,7 @@ class RyseBLEDevice:
         self.client = None
         self._unavailable_tracker = None
         self._callback = None
-        self._battery_callback = None
+        self._battery_callbacks = []
         self._battery_level = None
         # RYSE battery service UUID (this is a placeholder - we need to find the correct one)
         self.battery_uuid = None  # We'll discover this during connection
@@ -35,6 +35,8 @@ class RyseBLEDevice:
         self._connection_lock = asyncio.Lock()
         self._connection_cooldown = 5  # seconds between connection attempts
         self._shutdown = False
+        self._latest_battery = None
+        self._latest_position = None
 
     async def pair(self) -> bool:
         """Pair with the device."""
@@ -131,8 +133,9 @@ class RyseBLEDevice:
                                     battery_level = int.from_bytes(value, byteorder='little')
                                     _LOGGER.debug("Initial battery level: %d%%", battery_level)
                                     self._battery_level = battery_level
-                                    if self._battery_callback:
-                                        asyncio.create_task(self._battery_callback(battery_level))
+                                    # Call all registered battery callbacks
+                                    for cb in self._battery_callbacks:
+                                        asyncio.create_task(cb(battery_level))
                                 except Exception as e:
                                     _LOGGER.error("Failed to read initial battery level: %s", e)
                         
@@ -194,18 +197,20 @@ class RyseBLEDevice:
                 # Extract battery percentage from third byte if available
                 if len(data) >= 3:
                     battery = data[2]
+                    self._latest_battery = battery
                     _LOGGER.debug("[ADV] Battery percentage from advertisement: %d%%", battery)
                     self._battery_level = battery
-                    if self._battery_callback:
-                        asyncio.create_task(self._battery_callback(battery))
+                    for cb in self._battery_callbacks:
+                        asyncio.create_task(cb(battery))
                 if len(data) >= 2:
                     position = data[1]
+                    self._latest_position = position
                     _LOGGER.debug("[ADV] Position from advertisement: %d%%", position)
                     self._position = position
                     if hasattr(self, "update_callback") and self.update_callback:
                         asyncio.create_task(self.update_callback(position))
                 else:
-                    _LOGGER.warning("[ADV] Manufacturer data too short to extract battery: %s", data.hex())
+                    _LOGGER.debug("[ADV] Manufacturer data too short to extract battery: %s", data.hex())
             
             # Check manufacturer data for RYSE device
             manufacturer_data = service_info.manufacturer_data
@@ -221,7 +226,7 @@ class RyseBLEDevice:
                 if len(raw_data) > 0:
                     _LOGGER.debug("First byte of manufacturer data: %02x", raw_data[0])
                     if raw_data[0] & 0x40:
-                        _LOGGER.debug("Device is in pairing mode")
+                        _LOGGER.info("Device is in pairing mode")
                         # Try to connect when device is in pairing mode
                         asyncio.create_task(self.pair())
                     
@@ -343,10 +348,6 @@ class RyseBLEDevice:
         _LOGGER.debug("get_battery_level called, but battery is now only updated from advertisements.")
         return self._battery_level
 
-    async def start_battery_monitoring(self, callback, update_interval=3600):
-        """Start monitoring battery level (deprecated, now uses advertisements only)."""
-        _LOGGER.debug("start_battery_monitoring called, but battery is now only updated from advertisements.")
-        self._battery_callback = callback
-        # Immediately call back with the current value if available
-        if self._battery_level is not None:
-            await self._battery_callback(self._battery_level)
+    def add_battery_callback(self, callback):
+        _LOGGER.debug("[RyseBLEDevice] Adding battery callback: %s (device id: %s)", callback, id(self))
+        self._battery_callbacks.append(callback)

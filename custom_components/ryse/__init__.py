@@ -27,6 +27,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry.data["rx_uuid"],
         entry.data["tx_uuid"]
     )
+    _LOGGER.info("[init] Created RyseBLEDevice (id: %s) for address: %s", id(device), entry.data["address"])
     
     # Store device in hass data
     hass.data.setdefault(DOMAIN, {})

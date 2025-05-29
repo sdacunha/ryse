@@ -23,6 +23,14 @@ This fork adds several improvements to the original integration:
    - Better error handling and logging
    - Improved device state management
 
+## Features
+- BLE battery and position are now updated from advertisements, not GATT polling
+- Battery and position are available immediately after setup if an advertisement is received
+- Duplicate device setup is prevented; only unconfigured devices are shown in the pairing list
+- Friendly error messages for pairing mode and no devices found
+- Cover and battery sensor use a shared BLE device instance for correct updates
+- Entities restore last known state after restart (battery sensor)
+
 ## Installation
 
 ### HACS Installation (Recommended)
@@ -65,3 +73,7 @@ This integration now supports Home Assistant's Bluetooth proxy system. To use it
 1. Make sure you have a Bluetooth proxy set up in your Home Assistant instance
 2. The integration will automatically use the proxy when available
 3. No additional configuration is needed - the integration will work with both direct Bluetooth connections and proxies
+
+## TODO
+- Detect if blinds needs calibration
+- Add ability to set speed

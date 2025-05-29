@@ -1,24 +1,17 @@
 {
-    "config": {
-        "step": {
-            "user": {
-                "title": "Pairing RYSE device",
-                "description": "Please press PAIR button on RYSE device and then OK",
-                "data": {
-                    "device_address": "RYSE devices"
-                },
-                "submit": "OK"
-            },
-            "scan": {
-                "title": "Pairing RYSE device",
-                "data": {
-                    "device_address": "RYSE Devices:"
-                },
-                "submit": "PAIR"
-            }
-        },
-        "error": {
-            "no_devices_found": "No RYSE BLE gear found."
+  "config": {
+    "step": {
+      "scan": {
+        "title": "Select RYSE Smart Shade",
+        "description": "{info}",
+        "data": {
+          "device_address": "Devices"
         }
+      }
+    },
+    "error": {
+      "not_in_pairing_mode": "The selected device is not in pairing mode. Please press the pairing button on your RYSE Smart Shade and try again.",
+      "no_devices_found": "No RYSE Smart Shades found. Please make sure your device is powered on and in pairing mode, then try again."
     }
+  }
 }
