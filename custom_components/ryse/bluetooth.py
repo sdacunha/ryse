@@ -27,9 +27,6 @@ class RyseBLEDevice:
         self._callback = None
         self._battery_callbacks = []
         self._battery_level = None
-        # RYSE battery service UUID (this is a placeholder - we need to find the correct one)
-        self.battery_uuid = None  # We'll discover this during connection
-        self._battery_update_interval = 3600  # Default to 1 hour
         self._is_connected = False
         self._last_connection_attempt = None
         self._connection_lock = asyncio.Lock()
@@ -44,25 +41,13 @@ class RyseBLEDevice:
             return False
 
         async with self._connection_lock:
-            # Check if we're in cooldown period
-            if self._last_connection_attempt:
-                time_since_last = (datetime.now() - self._last_connection_attempt).total_seconds()
-                if time_since_last < self._connection_cooldown:
-                    _LOGGER.debug("Connection attempt throttled, waiting %d seconds", 
-                                self._connection_cooldown - time_since_last)
-                    return False
-
-            self._last_connection_attempt = datetime.now()
+            if self._is_connected and self.client and self.client.is_connected:
+                return True
 
             try:
                 _LOGGER.debug("Attempting to connect to device %s", self.address)
                 
-                # Get the Bluetooth scanner
-                scanner = async_get_scanner(self.hass)
-                if not scanner:
-                    raise BleakError("No Bluetooth scanner found")
-
-                # Register callback for device updates
+                # Register callback for device updates if not already registered
                 if not self._callback:
                     self._callback = async_register_callback(
                         self.hass,
@@ -71,86 +56,39 @@ class RyseBLEDevice:
                         BluetoothScanningMode.PASSIVE,
                     )
 
-                # Track device unavailability
+                # Track device unavailability if not already tracking
                 if not self._unavailable_tracker:
                     self._unavailable_tracker = async_track_unavailable(
                         self.hass,
                         self._device_unavailable,
                         self.address,
                     )
-
-                # Wait for device discovery
-                _LOGGER.debug("Waiting for device discovery...")
-                ble_device = None
-                for _ in range(10):  # Try for 10 seconds
-                    if self._shutdown:
-                        return False
-                    ble_device = async_ble_device_from_address(self.hass, self.address)
-                    if ble_device:
-                        _LOGGER.debug("Device found: %s", ble_device)
-                        break
-                    await asyncio.sleep(1)
-
+                
+                # Try to get the device from the scanner first
+                ble_device = async_ble_device_from_address(self.hass, self.address)
                 if ble_device:
-                    # Create a BleakClient instance with discovered device
+                    _LOGGER.debug("Device found: %s", ble_device)
                     self.client = BleakClient(
                         ble_device,
                         disconnected_callback=lambda client: asyncio.create_task(self._handle_disconnect(client))
                     )
                 else:
-                    _LOGGER.warning("Device not found after waiting, attempting direct connection")
-                    # Try direct connection as fallback
+                    _LOGGER.warning("Device not found, attempting direct connection")
                     self.client = BleakClient(
                         self.address,
                         disconnected_callback=lambda client: asyncio.create_task(self._handle_disconnect(client))
                     )
 
-                # Connect with a longer timeout
-                _LOGGER.debug("Attempting to connect...")
                 await self.client.connect(timeout=30.0)
                 if not self.client.is_connected:
                     raise BleakError("Failed to connect to device")
 
                 _LOGGER.debug("Connected to device %s", self.address)
                 self._is_connected = True
-
-                # Discover services and characteristics
-                _LOGGER.debug("Discovering services and characteristics...")
-                for service in self.client.services:
-                    _LOGGER.debug("Service: %s", service.uuid)
-                    for char in service.characteristics:
-                        _LOGGER.debug("  Characteristic: %s", char.uuid)
-                        _LOGGER.debug("    Properties: %s", char.properties)
-                        
-                        # Look for battery service and characteristic
-                        if service.uuid == "0000180f-0000-1000-8000-00805f9b34fb":  # Battery Service UUID
-                            _LOGGER.debug("Found battery service")
-                            if char.uuid == "00002a19-0000-1000-8000-00805f9b34fb":  # Battery Level Characteristic UUID
-                                _LOGGER.debug("Found battery level characteristic")
-                                self.battery_uuid = char.uuid
-                                try:
-                                    value = await self.client.read_gatt_char(char.uuid)
-                                    battery_level = int.from_bytes(value, byteorder='little')
-                                    _LOGGER.debug("Initial battery level: %d%%", battery_level)
-                                    self._battery_level = battery_level
-                                    # Call all registered battery callbacks
-                                    for cb in self._battery_callbacks:
-                                        asyncio.create_task(cb(battery_level))
-                                except Exception as e:
-                                    _LOGGER.error("Failed to read initial battery level: %s", e)
-                        
-                        # Try to read other readable characteristics
-                        elif "read" in char.properties:
-                            try:
-                                value = await self.client.read_gatt_char(char.uuid)
-                                _LOGGER.debug("    Value: %s", value.hex() if value else None)
-                            except Exception as e:
-                                _LOGGER.debug("    Failed to read value: %s", e)
-
                 return True
 
             except Exception as e:
-                _LOGGER.error("Error connecting to device %s: %s", self.address, e, exc_info=True)
+                _LOGGER.error("Error connecting to device %s: %s", self.address, e)
                 if self.client and self.client.is_connected:
                     await self.client.disconnect()
                 self._is_connected = False
@@ -164,25 +102,14 @@ class RyseBLEDevice:
         _LOGGER.debug("Device %s disconnected", self.address)
         self._is_connected = False
         
-        # Create a task for reconnection to avoid blocking
         if not self._shutdown:
             try:
-                # Add a small delay before reconnection attempt
                 await asyncio.sleep(self._connection_cooldown)
                 if not self._shutdown:
                     _LOGGER.debug("Attempting to reconnect to device %s", self.address)
                     await self.pair()
             except Exception as e:
                 _LOGGER.error("Failed to reconnect to device %s: %s", self.address, e)
-
-    async def _ensure_connected(self) -> bool:
-        """Ensure we have an active connection to the device."""
-        if self._shutdown:
-            return False
-
-        if not self._is_connected or not self.client or not self.client.is_connected:
-            return await self.pair()
-        return True
 
     def _device_update(self, service_info: BluetoothServiceInfo, change: BluetoothChange) -> None:
         """Handle device updates from the Bluetooth proxy."""
@@ -191,10 +118,9 @@ class RyseBLEDevice:
 
         if change == BluetoothChange.ADVERTISEMENT:
             _LOGGER.debug("[ADV] Advertisement received: %s", service_info)
-            # Log all manufacturer data
+            # Extract data from manufacturer data
             for mfr_id, data in service_info.manufacturer_data.items():
                 _LOGGER.debug("[ADV] Manufacturer ID: 0x%04x, Data: %s", mfr_id, data.hex() if data else None)
-                # Extract battery percentage from third byte if available
                 if len(data) >= 3:
                     battery = data[2]
                     self._latest_battery = battery
@@ -206,42 +132,8 @@ class RyseBLEDevice:
                     position = data[1]
                     self._latest_position = position
                     _LOGGER.debug("[ADV] Position from advertisement: %d%%", position)
-                    self._position = position
                     if hasattr(self, "update_callback") and self.update_callback:
                         asyncio.create_task(self.update_callback(position))
-                else:
-                    _LOGGER.debug("[ADV] Manufacturer data too short to extract battery: %s", data.hex())
-            
-            # Check manufacturer data for RYSE device
-            manufacturer_data = service_info.manufacturer_data
-            _LOGGER.debug("Manufacturer data: %s", manufacturer_data)
-            
-            # Try both 0x0409 and 0x409 (they might be represented differently)
-            raw_data = manufacturer_data.get(0x0409) or manufacturer_data.get(0x409)
-            
-            if raw_data is not None:
-                _LOGGER.debug("Found RYSE manufacturer data: %s", raw_data.hex())
-                
-                # Check if device is in pairing mode (0x40 flag)
-                if len(raw_data) > 0:
-                    _LOGGER.debug("First byte of manufacturer data: %02x", raw_data[0])
-                    if raw_data[0] & 0x40:
-                        _LOGGER.info("Device is in pairing mode")
-                        # Try to connect when device is in pairing mode
-                        asyncio.create_task(self.pair())
-                    
-                # Handle RYSE data packets
-                if len(raw_data) >= 5 and raw_data[0] == 0xF5:
-                    _LOGGER.debug("Received RYSE data packet: %s", raw_data.hex())
-                    
-                    # Handle position data (similar to notification handler)
-                    if raw_data[2] == 0x01 and raw_data[3] == 0x07:
-                        new_position = raw_data[4]  # Extract the position byte
-                        _LOGGER.debug("Received position data in advertisement: %s", new_position)
-                        
-                        # Notify cover.py about the position update
-                        if hasattr(self, "update_callback"):
-                            asyncio.create_task(self.update_callback(new_position))
 
     def _device_unavailable(self, service_info: BluetoothServiceInfo) -> None:
         """Handle device becoming unavailable."""
@@ -251,37 +143,6 @@ class RyseBLEDevice:
         _LOGGER.debug(f"Device {self.address} became unavailable")
         if self.client and self.client.is_connected:
             asyncio.create_task(self.unpair())
-
-    async def _notification_handler(self, sender, data):
-        """Callback function for handling received BLE notifications."""
-        if self._shutdown:
-            return
-
-        _LOGGER.debug(f"Received notification: {data.hex()} | bytes: {list(data)}")
-        if len(data) >= 5 and data[0] == 0xF5 and data[2] == 0x01 and data[3] == 0x18:
-            #ignore REPORT USER TARGET data
-            return
-        _LOGGER.debug(f"Received notification")
-        if len(data) >= 5 and data[0] == 0xF5 and data[2] == 0x01 and data[3] == 0x07:
-            new_position = data[4]  # Extract the position byte
-            _LOGGER.debug(f"Received valid notification, updating position: {new_position}")
-
-            # Notify cover.py about the position update
-            if hasattr(self, "update_callback"):
-                await self.update_callback(new_position)
-
-    async def get_device_info(self):
-        if self._shutdown:
-            return None
-
-        if self.client:
-            try:
-                manufacturer_data = self.client.services
-                _LOGGER.debug(f"Getting Manufacturer Data")
-                return manufacturer_data
-            except Exception as e:
-                _LOGGER.error(f"Failed to get device info: {e}")
-        return None
 
     async def unpair(self):
         """Unpair from the device and clean up resources."""
@@ -295,7 +156,6 @@ class RyseBLEDevice:
                 _LOGGER.error("Error disconnecting device: %s", e)
             self.client = None
         
-        # Clean up Bluetooth tracking
         if self._callback:
             self._callback()
             self._callback = None
@@ -303,25 +163,40 @@ class RyseBLEDevice:
             self._unavailable_tracker()
             self._unavailable_tracker = None
 
-    async def read_data(self):
-        if self._shutdown:
-            return None
-
-        if self.client:
-            data = await self.client.read_gatt_char(self.rx_uuid)
-            if len(data) < 5 or data[0] != 0xF5 or data[2] != 0x01 or data[3] != 0x18:
-                #ignore REPORT USER TARGET data
-                _LOGGER.debug(f"Received Position Report Data")
-                return data
-            return None
-
     async def write_data(self, data):
+        """Write data to the device."""
         if self._shutdown:
             return
 
-        if self.client:
+        if not self._is_connected or not self.client or not self.client.is_connected:
+            if not await self.pair():
+                _LOGGER.error("Failed to connect to device for write operation")
+                return
+
+        try:
             await self.client.write_gatt_char(self.tx_uuid, data)
             _LOGGER.debug(f"Sending data to tx uuid")
+        except Exception as e:
+            _LOGGER.error(f"Error writing data: {e}")
+            self._is_connected = False
+
+    def add_battery_callback(self, callback):
+        """Add a callback for battery updates."""
+        _LOGGER.debug("[RyseBLEDevice] Adding battery callback: %s (device id: %s)", callback, id(self))
+        self._battery_callbacks.append(callback)
+
+    async def get_device_info(self):
+        if self._shutdown:
+            return None
+
+        if self.client:
+            try:
+                manufacturer_data = self.client.services
+                _LOGGER.debug(f"Getting Manufacturer Data")
+                return manufacturer_data
+            except Exception as e:
+                _LOGGER.error(f"Failed to get device info: {e}")
+        return None
 
     async def scan_and_pair(self):
         if self._shutdown:
@@ -347,7 +222,3 @@ class RyseBLEDevice:
         """Read the battery level from the device (deprecated, now uses advertisements only)."""
         _LOGGER.debug("get_battery_level called, but battery is now only updated from advertisements.")
         return self._battery_level
-
-    def add_battery_callback(self, callback):
-        _LOGGER.debug("[RyseBLEDevice] Adding battery callback: %s (device id: %s)", callback, id(self))
-        self._battery_callbacks.append(callback)

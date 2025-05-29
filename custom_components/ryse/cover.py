@@ -2,6 +2,9 @@ from homeassistant.components.cover import CoverEntity, CoverEntityFeature
 from custom_components.ryse.bluetooth import RyseBLEDevice
 import logging
 from .const import DOMAIN
+from datetime import datetime, timedelta
+from homeassistant.helpers.restore_state import RestoreEntity
+import asyncio
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -35,7 +38,7 @@ def build_get_position_packet() -> bytes:
     # Append checksum
     return data_bytes + bytes([checksum])
 
-class SmartShadeCover(CoverEntity):
+class SmartShadeCover(CoverEntity, RestoreEntity):
     def __init__(self, device):
         self._device = device
         self._attr_name = f"Smart Shade {device.address}"
@@ -47,6 +50,10 @@ class SmartShadeCover(CoverEntity):
         self._is_opening = False
         self._last_command_time = 0
         self._command_cooldown = 1.0  # 1 second cooldown between commands
+        self._restored = False
+        self._last_state_update = None
+        self._initialized = False
+        self._initial_read_done = False
 
         # Register the callbacks
         self._device.update_callback = self._update_position
@@ -59,12 +66,15 @@ class SmartShadeCover(CoverEntity):
             self._state = "open" if position < 100 else "closed"
             self._is_closing = False
             self._is_opening = False
+            self._last_state_update = datetime.now()
+            self._initialized = True
             _LOGGER.debug(f"Updated cover position: {position}")
         self.async_write_ha_state()
 
     async def _update_battery(self, battery_level):
         """Update battery level when received from device."""
         self._battery_level = battery_level
+        self._initialized = True
         self.async_write_ha_state()
 
     @property
@@ -75,17 +85,76 @@ class SmartShadeCover(CoverEntity):
     async def async_added_to_hass(self):
         """When entity is added to hass."""
         await super().async_added_to_hass()
-        # Use latest position value from advertisement if available
+        
+        # First try to restore from last state
+        last_state = await self.async_get_last_state()
+        if last_state and last_state.state not in (None, "unknown", "unavailable"):
+            _LOGGER.info("[Cover] Restoring last known state: %s", last_state.state)
+            self._state = last_state.state
+            if "current_position" in last_state.attributes:
+                self._current_position = int(last_state.attributes["current_position"])
+            self._restored = True
+            self._initialized = True
+            self.async_write_ha_state()
+
+        # Then update from latest advertisement if available
         if self._device._latest_position is not None:
             _LOGGER.info("[Cover] Immediate position update from latest advertisement: %s", self._device._latest_position)
             await self._update_position(self._device._latest_position)
         else:
-            # If no position is known, assume closed to prevent accidental opening
-            self._state = "closed"
-            self._current_position = 0
-            self.async_write_ha_state()
-            # Request initial position
-            await self.async_update()
+            # Only attempt a GATT read if no recent advertisement, with timeout
+            _LOGGER.info("[Cover] No recent advertisement, attempting GATT read for initial state (timeout 10s)")
+            try:
+                await asyncio.wait_for(self._read_initial_state(), timeout=10)
+            except asyncio.TimeoutError:
+                _LOGGER.warning("[Cover] Timed out waiting for GATT read for initial state (10s)")
+
+    async def _read_initial_state(self):
+        """Read initial state from device via GATT."""
+        if self._initial_read_done:
+            return
+
+        try:
+            if not self._device.client or not self._device.client.is_connected:
+                if not await self._device.pair():
+                    _LOGGER.warning("Failed to connect to device for initial state read")
+                    return
+
+            _LOGGER.debug("Reading initial position from device")
+            bytesinfo = build_get_position_packet()
+            await self._device.write_data(bytesinfo)
+            self._initial_read_done = True
+        except Exception as e:
+            _LOGGER.error(f"Error reading initial state: {e}")
+        finally:
+            # If we still don't have a state, assume closed
+            if self._current_position is None:
+                _LOGGER.info("[Cover] No position known after GATT read, assuming closed state")
+                self._state = "closed"
+                self._current_position = 0
+                self._initialized = True
+                self.async_write_ha_state()
+
+    @property
+    def available(self) -> bool:
+        """Return True if the entity has been initialized."""
+        if not self._initialized:
+            _LOGGER.debug("[Cover] Entity not yet initialized")
+            return False
+            
+        # If we have a state update, check if it's recent
+        if self._last_state_update:
+            time_since_update = datetime.now() - self._last_state_update
+            if time_since_update > timedelta(minutes=30):
+                _LOGGER.debug("[Cover] Last state update was %s ago", time_since_update)
+                return False
+                
+        # If we have a state and position, we're available
+        if self._state is not None and self._current_position is not None:
+            return True
+            
+        _LOGGER.debug("[Cover] No valid state or position")
+        return False
 
     async def async_open_cover(self, **kwargs):
         """Open the shade."""
@@ -174,21 +243,6 @@ class SmartShadeCover(CoverEntity):
             self._is_closing = False
             self._is_opening = False
             self.async_write_ha_state()
-
-    async def async_update(self):
-        """Fetch the current state and position from the device."""
-        if not self._device.client or not self._device.client.is_connected:
-            paired = await self._device.pair()
-            if not paired:
-                _LOGGER.warning("Failed to pair with device. Skipping update.")
-                return
-
-        try:
-            if self._current_position is None:
-                bytesinfo = build_get_position_packet()
-                await self._device.write_data(bytesinfo)
-        except Exception as e:
-            _LOGGER.error(f"Error reading device data: {e}")
 
     @property
     def is_closed(self):
