@@ -1,9 +1,18 @@
 from homeassistant import config_entries
 import voluptuous as vol
 import logging
-from bleak import BleakScanner, BleakClient
-import subprocess
 import asyncio
+from homeassistant.components.bluetooth import (
+    async_get_scanner,
+    async_ble_device_from_address,
+    BluetoothServiceInfo,
+    async_register_callback,
+    BluetoothCallbackMatcher,
+    BluetoothChange,
+    BluetoothScanningMode,
+    async_get_bluetooth,
+)
+from bleak import BleakClient
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -15,12 +24,6 @@ HARDCODED_UUIDS = {
     "rx_uuid": "a72f2801-b0bd-498b-b4cd-4a3901388238",
     "tx_uuid": "a72f2802-b0bd-498b-b4cd-4a3901388238",
 }
-
-def close_process(process):
-    process.stdin.close()
-    process.stdout.close()
-    process.stderr.close()
-    process.wait()
 
 class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for RYSE BLE Device."""
@@ -40,9 +43,29 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             last_step=False,
         )
 
+    def _update_form(self) -> None:
+        """Update the form with current device options."""
+        self.hass.async_create_task(
+            self.async_set_unique_id(next(iter(self.device_options.keys())))
+        )
+        return self.async_show_form(
+            step_id="scan",
+            data_schema=vol.Schema(
+                {
+                    vol.Required("device_address"): vol.In(self.device_options),
+                }
+            ),
+            description_placeholders={"info": "Press the PAIR button on your RYSE device and wait for it to appear in the list. Make sure your device is in pairing mode."}
+        )
+
     async def async_step_scan(self, user_input=None):
         """Handle the BLE device scanning step."""
         if user_input is not None:
+            # Clean up the callback before proceeding
+            if hasattr(self, '_callback') and self._callback:
+                self._callback()
+                self._callback = None
+
             # Extract device name and address from the selected option
             selected_device = next(
                 (name for addr, name in self.device_options.items() if addr == user_input["device_address"]),
@@ -55,54 +78,79 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             device_address = user_input["device_address"]
 
             try:
-                _LOGGER.debug("Attempting to pair with BLE device: %s (%s)", device_name, device_address)
+                _LOGGER.debug("Starting pairing process for device: %s (%s)", device_name, device_address)
 
-                # Start bluetoothctl in interactive mode
-                process = subprocess.Popen(
-                    ["bluetoothctl"],
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    bufsize=1
-                )
+                # Get the Bluetooth scanner
+                scanner = async_get_scanner(self.hass)
+                _LOGGER.debug("Scanner type: %s", type(scanner))
+                if not scanner:
+                    _LOGGER.error("No Bluetooth scanner found")
+                    return self.async_abort(reason="No Bluetooth scanner found")
 
+                # Get the BLE device
+                _LOGGER.debug("Attempting to get BLE device for address: %s", device_address)
+                ble_device = async_ble_device_from_address(self.hass, device_address)
+                _LOGGER.debug("BLE device type: %s", type(ble_device))
+                if not ble_device:
+                    _LOGGER.error(f"Could not find BLE device with address {device_address}")
+                    return self.async_abort(reason="Device not found")
+
+                # Create a BleakClient instance
+                _LOGGER.debug("Creating BleakClient for device: %s", device_address)
+                client = BleakClient(ble_device)
+                
                 max_retries = 3
                 retry_count = 0
                 while retry_count < max_retries:
                     try:
-                        client = BleakClient(device_address)
+                        _LOGGER.debug("Attempting to connect (attempt %d/%d)", retry_count + 1, max_retries)
                         await client.connect()
                         if client.is_connected:
                             _LOGGER.debug(f"Connected to {device_address}")
 
+                            # Log all services and characteristics
+                            _LOGGER.debug("Discovering services and characteristics...")
+                            for service in client.services:
+                                _LOGGER.debug("Service: %s", service.uuid)
+                                for char in service.characteristics:
+                                    _LOGGER.debug("  Characteristic: %s", char.uuid)
+                                    _LOGGER.debug("    Properties: %s", char.properties)
+                                    if "read" in char.properties:
+                                        try:
+                                            value = await client.read_gatt_char(char.uuid)
+                                            _LOGGER.debug("    Value: %s", value.hex() if value else None)
+                                        except Exception as e:
+                                            _LOGGER.debug("    Failed to read value: %s", e)
+
                             # Pairing (Only required if your device needs pairing)
                             try:
+                                _LOGGER.debug("Attempting to pair with device")
                                 paired = await client.pair()
+                                _LOGGER.debug("Pair result: %s", paired)
                                 if not paired:
                                     _LOGGER.error("Failed to pair with BLE device: %s (%s)", device_name, device_address)
-                                    close_process(process)
                                     return self.async_abort(reason="Pairing failed!")
                                 else:
                                     _LOGGER.debug("Paired successfully")
                                     break  # Exit the retry loop on success
+                            except NotImplementedError as e:
+                                _LOGGER.warning("Pairing not supported on this platform: %s", e)
+                                # Skip pairing and proceed with connection
+                                break
                             except Exception as e:
-                                _LOGGER.warning(f"Pairing failed: {e}")
+                                _LOGGER.warning(f"Pairing failed: {e}", exc_info=True)
                         else:
                             _LOGGER.error("Failed to connect")
-                            close_process(process)
-                            return False
+                            return self.async_abort(reason="Connection failed")
                     except Exception as e:
-                        _LOGGER.error(f"Connection error (attempt {retry_count + 1}): {e}")
+                        _LOGGER.error(f"Connection error (attempt {retry_count + 1}): {e}", exc_info=True)
                         retry_count += 1
                         if retry_count >= max_retries:
-                            close_process(process)
-                            return False
+                            return self.async_abort(reason="Connection failed after retries")
                         await asyncio.sleep(3)  # Wait before retrying
 
-                await asyncio.sleep(5)
-                close_process(process)
-
+                _LOGGER.debug("Disconnecting from device")
+                await client.disconnect()
                 _LOGGER.debug("Successfully paired with BLE device: %s (%s)", device_name, device_address)
 
                 # Create entry after successful pairing
@@ -115,15 +163,14 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 )
 
             except Exception as e:
-                _LOGGER.error("Error during pairing process for BLE device: %s (%s): %s", device_name, device_address, e)
+                _LOGGER.error("Error during pairing process for BLE device: %s (%s): %s", device_name, device_address, e, exc_info=True)
                 return self.async_abort(reason="Pairing failed!")
 
-        # Scan for BLE devices
-        devices = await BleakScanner.discover()
-
-        # Debug: Log all discovered devices
-        for device in devices:
-            _LOGGER.debug("Device Name: %s - Device Address: %s", device.name, device.address)
+        # Get the Bluetooth scanner
+        scanner = async_get_scanner(self.hass)
+        if not scanner:
+            _LOGGER.error("No Bluetooth scanner found")
+            return self.async_abort(reason="No Bluetooth scanner found")
 
         # Get existing entries to exclude already configured devices
         existing_entries = self._async_current_entries()
@@ -131,26 +178,56 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         self.device_options = {}
 
-        for device in devices:
-            if not device.name:
-                continue  # Ignore unnamed devices
-            if device.address in existing_addresses:
-                _LOGGER.debug("Skipping already configured device: %s (%s)", device.name, device.address)
-                continue  # Skip already configured devices
+        # Register callback for device updates
+        def device_update(service_info: BluetoothServiceInfo, change: BluetoothChange) -> None:
+            """Handle device updates from the Bluetooth proxy."""
+            if change == BluetoothChange.ADVERTISEMENT:
+                device_name = str(service_info.name) if service_info.name else ""
+                device_address = service_info.address
 
-            manufacturer_data = device.metadata.get("manufacturer_data", {})
-            raw_data = manufacturer_data.get(0x0409)  # 0x0409 == 1033
-            if raw_data != None:
-                _LOGGER.debug("Found RYSE Device in Pairing mode: %s - address: %s", device.name, device.address)
-                # Check if the pairing mode flag (0x40) is in the first byte
-                if len(raw_data) > 0 and (raw_data[0] & 0x40):
-                    self.device_options[device.address] = f"{device.name} ({device.address})"
+                _LOGGER.debug("Discovered device: %s (%s)", device_name, device_address)
+                _LOGGER.debug("Manufacturer data: %s", service_info.manufacturer_data)
 
-        if not self.device_options:
-            _LOGGER.warning("No BLE devices found in pairing mode (0x40).")
-            return self.async_abort(reason="No RYSE devices found in pairing mode!")
+                if not device_name or device_address in existing_addresses:
+                    return
 
-        # Show device selection form
+                # Get manufacturer data from the device
+                manufacturer_data = service_info.manufacturer_data
+                
+                # Log all manufacturer data IDs for debugging
+                for mfr_id, data in manufacturer_data.items():
+                    _LOGGER.debug("Manufacturer ID: 0x%04x, Data: %s", mfr_id, data.hex() if data else None)
+                
+                # Try both 0x0409 and 0x409 (they might be represented differently)
+                raw_data = manufacturer_data.get(0x0409) or manufacturer_data.get(0x409)
+                
+                if raw_data is not None:
+                    _LOGGER.debug("Found device with RYSE manufacturer data: %s - raw data: %s", 
+                                 device_name, raw_data.hex() if raw_data else None)
+                    
+                    # Check if device is in pairing mode (0x40 flag)
+                    if len(raw_data) > 0:
+                        _LOGGER.debug("First byte of manufacturer data: %02x", raw_data[0])
+                        if raw_data[0] & 0x40:
+                            _LOGGER.debug("Device is in pairing mode: %s (%s)", device_name, device_address)
+                            self.device_options[device_address] = f"{device_name} ({device_address})"
+                            # Schedule form update in the event loop
+                            self.hass.loop.call_soon_threadsafe(
+                                lambda: self._update_form()
+                            )
+
+        # Register the callback with the Bluetooth manager
+        self._callback = async_register_callback(
+            self.hass,
+            device_update,
+            BluetoothCallbackMatcher(),
+            BluetoothScanningMode.ACTIVE,
+        )
+
+        # Start scanning
+        _LOGGER.debug("Starting continuous scan for RYSE devices in pairing mode...")
+        
+        # Show the form with current devices (will be updated by the callback)
         return self.async_show_form(
             step_id="scan",
             data_schema=vol.Schema(
@@ -158,5 +235,12 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Required("device_address"): vol.In(self.device_options),
                 }
             ),
-            description_placeholders={"info": "Select a RYSE BLE device to pair."}
+            description_placeholders={"info": "Press the PAIR button on your RYSE device and wait for it to appear in the list. Make sure your device is in pairing mode."}
         )
+
+    async def async_step_abort(self, user_input=None):
+        """Handle aborting the config flow."""
+        if hasattr(self, '_callback') and self._callback:
+            self._callback()
+            self._callback = None
+        return await super().async_step_abort(user_input)

@@ -5,7 +5,7 @@ import logging
 _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(hass, entry, async_add_entities):
-    device = RyseBLEDevice(entry.data['address'], entry.data['rx_uuid'], entry.data['tx_uuid'])
+    device = RyseBLEDevice(hass, entry.data['address'], entry.data['rx_uuid'], entry.data['tx_uuid'])
     async_add_entities([SmartShadeCover(device)])
 
 def build_position_packet(pos: int) -> bytes:
@@ -41,9 +41,11 @@ class SmartShadeCover(CoverEntity):
         self._attr_unique_id = f"smart_shade_{device.address}"
         self._state = None
         self._current_position = None
+        self._battery_level = None
 
-        # Register the callback
+        # Register the callbacks
         self._device.update_callback = self._update_position
+        self._device._battery_callback = self._update_battery
 
     async def _update_position(self, position):
         """Update cover position when receiving notification."""
@@ -52,6 +54,22 @@ class SmartShadeCover(CoverEntity):
             self._state = "open" if position < 100 else "closed"
             _LOGGER.debug(f"Updated cover position: {position}")
         self.async_write_ha_state()  # Notify Home Assistant about the state change
+
+    async def _update_battery(self, battery_level):
+        """Update battery level when received from device."""
+        self._battery_level = battery_level
+        self.async_write_ha_state()
+
+    @property
+    def battery_level(self):
+        """Return the battery level of the device."""
+        return self._battery_level
+
+    async def async_added_to_hass(self):
+        """When entity is added to hass."""
+        await super().async_added_to_hass()
+        # Start battery monitoring with 4-hour interval
+        self.hass.async_create_task(self._device.start_battery_monitoring(self._update_battery, update_interval=14400))
 
     async def async_open_cover(self, **kwargs):
         """Open the shade."""
@@ -98,10 +116,10 @@ class SmartShadeCover(CoverEntity):
     def current_cover_position(self) -> int | None:
         """Return current cover position."""
         if self._current_position is None:
-            return 50
+            return None  # Return None instead of defaulting to 50%
         if not (0 <= self._current_position <= 100):
             _LOGGER.warning(f"Invalid position value detected: {self._current_position}")
-            return 50  # Prevent invalid values
+            return None  # Return None for invalid values
         return int(self._current_position)
 
     @property

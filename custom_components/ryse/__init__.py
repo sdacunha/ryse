@@ -1,8 +1,11 @@
+"""The RYSE BLE Device integration."""
+from __future__ import annotations
+
 import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from custom_components.ryse.bluetooth import RyseBLEDevice
+from .bluetooth import RyseBLEDevice
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -13,44 +16,37 @@ async def async_setup(hass: HomeAssistant, config: dict):
     _LOGGER.debug("Setting up RYSE Device integration")
     return True
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up RYSE from a config entry."""
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = entry
-
+    _LOGGER.debug("Setting up RYSE entry: %s", entry.data)
+    
+    # Create device instance
     device = RyseBLEDevice(
-        address=entry.data["address"],
-        rx_uuid=entry.data["rx_uuid"],
-        tx_uuid=entry.data["tx_uuid"],
+        hass,
+        entry.data["address"],
+        entry.data["rx_uuid"],
+        entry.data["tx_uuid"]
     )
-
-    async def handle_pair(call):
-        """Handle the pair_device service call."""
-        paired = await device.pair()
-        if paired:
-            device_info = await device.get_device_info()
-            _LOGGER.debug("Getting Device Info")
-
-    async def handle_unpair(call):
-        """Handle the unpair_device service call."""
-        await device.unpair()
-
-    async def handle_read(call):
-        """Handle the read_info service call."""
-        data = await device.read_data()
-        if data:
-            _LOGGER.debug("Reading Data")
-
-    async def handle_write(call):
-        """Handle the send_raw_data service call."""
-        data = bytes.fromhex(call.data["data"])
-        await device.write_data(data)
-
-    hass.services.async_register(DOMAIN, "pair_device", handle_pair)
-    hass.services.async_register(DOMAIN, "unpair_device", handle_unpair)
-    hass.services.async_register(DOMAIN, "read_info", handle_read)
-    hass.services.async_register(DOMAIN, "send_raw_data", handle_write)
-
-    await hass.config_entries.async_forward_entry_setups(entry, ["cover"])
-
+    
+    # Store device in hass data
+    hass.data.setdefault(DOMAIN, {})
+    hass.data[DOMAIN][entry.entry_id] = device
+    
+    # Set up platforms
+    await hass.config_entries.async_forward_entry_setups(entry, ["cover", "sensor"])
+    
     return True
+
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Unload a config entry."""
+    _LOGGER.debug("Unloading RYSE entry: %s", entry.data)
+    
+    # Unload platforms
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, ["cover", "sensor"])
+    
+    if unload_ok:
+        # Clean up device
+        device = hass.data[DOMAIN].pop(entry.entry_id)
+        await device.unpair()
+    
+    return unload_ok
