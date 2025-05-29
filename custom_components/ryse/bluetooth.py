@@ -339,62 +339,14 @@ class RyseBLEDevice:
         return False
 
     async def get_battery_level(self):
-        """Read the battery level from the device."""
-        if self._shutdown:
-            return None
-
-        if not self.client or not self.client.is_connected:
-            _LOGGER.debug("Client not connected, attempting to reconnect")
-            paired = await self.pair()
-            if not paired:
-                _LOGGER.error("Failed to connect to device for battery reading")
-                return None
-
-        try:
-            ryse_battery_uuid = "a72f2801-b0bd-498b-b4cd-4a3901388238"
-            _LOGGER.debug("Attempting to read battery/status from RYSE service: %s", ryse_battery_uuid)
-            battery_data = await self.client.read_gatt_char(ryse_battery_uuid)
-            if battery_data is None:
-                _LOGGER.error("Battery read returned None!")
-            else:
-                _LOGGER.debug("Raw battery/status data: %s | bytes: %s", battery_data.hex(), list(battery_data))
-                if len(battery_data) >= 2:
-                    battery_level = battery_data[1]
-                    _LOGGER.debug("Battery level from second byte: %d%%", battery_level)
-                    if 0 <= battery_level <= 100:
-                        self._battery_level = battery_level
-                        # Do NOT call self._battery_callback here; only update from advertisements
-                        # if self._battery_callback:
-                        #     await self._battery_callback(battery_level)
-                        return battery_level
-                    else:
-                        _LOGGER.warning("Invalid battery level received: %d%%", battery_level)
-                else:
-                    _LOGGER.warning("Battery data too short: %s", battery_data.hex())
-        except Exception as e:
-            _LOGGER.error("Error reading battery level: %s", e, exc_info=True)
-            if not self._shutdown:
-                self.hass.async_create_task(self.pair())
-        return None
+        """Read the battery level from the device (deprecated, now uses advertisements only)."""
+        _LOGGER.debug("get_battery_level called, but battery is now only updated from advertisements.")
+        return self._battery_level
 
     async def start_battery_monitoring(self, callback, update_interval=3600):
-        """Start monitoring battery level with periodic updates.
-        
-        Args:
-            callback: Function to call with battery updates
-            update_interval: Time between updates in seconds (default: 1 hour)
-        """
-        if self._shutdown:
-            return
-
+        """Start monitoring battery level (deprecated, now uses advertisements only)."""
+        _LOGGER.debug("start_battery_monitoring called, but battery is now only updated from advertisements.")
         self._battery_callback = callback
-        self._battery_update_interval = update_interval
-        
-        # Initial battery reading
-        await self.get_battery_level()
-        
-        # Set up periodic battery updates
-        while not self._shutdown:
-            await asyncio.sleep(self._battery_update_interval)
-            if self.client and self.client.is_connected and not self._shutdown:
-                await self.get_battery_level()
+        # Immediately call back with the current value if available
+        if self._battery_level is not None:
+            await self._battery_callback(self._battery_level)
