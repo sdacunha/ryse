@@ -1,0 +1,34 @@
+# Ignore Python cache directories and files
+__pycache__/
+**/__pycache__/
+*.pyc
+
+# Home Assistant specific ignores
+# Ignore Home Assistant database and log files
+home-assistant_v2.db
+home-assistant_v2.db-shm
+home-assistant_v2.db-wal
+home-assistant.log
+home-assistant.log.*
+
+# Ignore Home Assistant configuration secrets
+secrets.yaml
+
+# Ignore Home Assistant storage and backup files
+.storage/
+.backups/
+
+# Ignore custom component cache
+custom_components/*/__pycache__/
+
+# Ignore other common files
+*.db
+*.log
+*.sqlite3
+*.db-shm
+*.db-wal
+.DS_Store
+*.swp
+*.swo
+*.bak
+*.tmp 
