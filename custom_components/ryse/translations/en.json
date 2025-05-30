@@ -1,12 +1,20 @@
 {
   "config": {
     "step": {
+      "user": {
+        "title": "Add RYSE SmartShade",
+        "description": "Put your RYSE device in pairing mode (press the PAIR button) and click Next to continue."
+      },
       "scan": {
-        "title": "Select RYSE Smart Shade",
+        "title": "Select RYSE SmartShade",
         "description": "{info}",
         "data": {
           "device_address": "Devices"
         }
+      },
+      "name": {
+        "title": "Name Your SmartShade",
+        "description": "Enter a name for your SmartShade."
       }
     },
     "error": {

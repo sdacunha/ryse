@@ -45,7 +45,7 @@ This fork adds several improvements to the original integration:
 4. Restart Home Assistant
 
 ### Manual Installation
-Download the RYSE home Assistant component from: https://github.com/mohamedkallel82/ryse/archive/refs/heads/main.zip
+Download the RYSE home Assistant component from: https://github.com/sdacunha/ryse/archive/refs/heads/main.zip
 
 Unzip it and then copy the folder `custom_components/ryse`  to your HomeAssistant under `/homeassistant/custom_components`.
 
@@ -60,12 +60,7 @@ the tree in your Home Assistant should be be like the following:
                 └── cover.py
                 └── ...
 
-## Usage
-Reboot your home assistant and now you can play with RYSE BLE devices via your Home Assistant.
-
-The following video show how to pair a RYSE BLE device with home assistant: 
-
-[![Watch the video](https://img.youtube.com/vi/G24vZGYZ-_o/0.jpg)](https://youtu.be/G24vZGYZ-_o)
+Reboot your Home Assistant instance and you can not pair your RYSE Smart Shades.
 
 ## Bluetooth Proxy Support
 This integration now supports Home Assistant's Bluetooth proxy system. To use it:
