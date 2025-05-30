@@ -5,7 +5,8 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from .bluetooth import RyseBLEDevice
+from .ryse import RyseDevice
+from .coordinator import RyseCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -21,17 +22,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.info("Setting up RYSE entry: %s", entry.data)
     
     # Create device instance
-    device = RyseBLEDevice(
-        hass,
-        entry.data["address"],
-        entry.data["rx_uuid"],
-        entry.data["tx_uuid"]
-    )
-    _LOGGER.info("[init] Created RyseBLEDevice (id: %s) for address: %s", id(device), entry.data["address"])
+    device = RyseDevice(entry.data["address"])
+    _LOGGER.info("[init] Created RyseDevice (id: %s) for address: %s", id(device), entry.data["address"])
     
-    # Store device in hass data
+    # Create coordinator instance
+    coordinator = RyseCoordinator(hass, entry.data["address"], device, entry.data.get("name", "SmartShade"))
+    
+    # Store coordinator in hass data
     hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = device
+    hass.data[DOMAIN][entry.entry_id] = coordinator
     
     # Set up platforms
     await hass.config_entries.async_forward_entry_setups(entry, ["cover", "sensor"])
