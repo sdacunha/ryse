@@ -1,35 +1,12 @@
-# RYSE HomeAssistant component
-A full-featured Homeassistant component to drive RYSE BLE devices.
+# RYSE Home Assistant Integration
 
-> This is a fork of the original [RYSE Home Assistant integration](https://github.com/mohamedkallel82/ryse) by [@mohamedkallel82](https://github.com/mohamedkallel82), with added support for Bluetooth proxies and HACS installation.
-
-## What's Different in This Fork?
-
-This fork adds several improvements to the original integration:
-
-1. **Bluetooth Proxy Support**
-   - Works with Home Assistant's Bluetooth proxy system
-   - Automatically uses proxy when available
-   - Maintains compatibility with direct Bluetooth connections
-   - Better device tracking and unavailability handling
-
-2. **HACS Integration**
-   - Easy installation through HACS
-   - Automatic updates
-   - Better integration with Home Assistant ecosystem
-
-3. **Code Improvements**
-   - Updated Bluetooth implementation using Home Assistant's native Bluetooth APIs
-   - Better error handling and logging
-   - Improved device state management
+This is a complete rewrite of the RYSE Home Assistant integration, inspired by [@mohamedkallel82](https://github.com/mohamedkallel82). This version is built from the ground up for reliability, modern Home Assistant best practices, and robust Bluetooth support (including Bluetooth proxies).
 
 ## Features
-- BLE battery and position are now updated from advertisements, not GATT polling
-- Battery and position are available immediately after setup if an advertisement is received
-- Duplicate device setup is prevented; only unconfigured devices are shown in the pairing list
-- Friendly error messages for pairing mode and no devices found
-- Cover and battery sensor use a shared BLE device instance for correct updates
-- Entities restore last known state after restart (battery sensor)
+- Real time updates for position and state
+- Works with ESPHome Bluetooth proxies and direct connections
+- Easy pairing and setup from the Home Assistant UI
+- Battery status
 
 ## Installation
 
@@ -45,30 +22,26 @@ This fork adds several improvements to the original integration:
 4. Restart Home Assistant
 
 ### Manual Installation
-Download the RYSE home Assistant component from: https://github.com/sdacunha/ryse/archive/refs/heads/main.zip
+Download the RYSE Home Assistant component from: https://github.com/sdacunha/ryse/archive/refs/heads/main.zip
 
-Unzip it and then copy the folder `custom_components/ryse`  to your HomeAssistant under `/homeassistant/custom_components`.
+Unzip it and then copy the folder `custom_components/ryse` to your Home Assistant under `/homeassistant/custom_components`.
 
-the tree in your Home Assistant should be be like the following:
-
+The tree in your Home Assistant should look like this:
 
     /homeassistant
         └── custom_components
             └── ryse
                 └── __init__.py
-                └── bluetooth.py
-                └── cover.py
                 └── ...
 
-Reboot your Home Assistant instance and you can not pair your RYSE Smart Shades.
+Reboot your Home Assistant instance and you can now pair your RYSE SmartShades.
 
-## Bluetooth Proxy Support
-This integration now supports Home Assistant's Bluetooth proxy system. To use it:
-
-1. Make sure you have a Bluetooth proxy set up in your Home Assistant instance
-2. The integration will automatically use the proxy when available
-3. No additional configuration is needed - the integration will work with both direct Bluetooth connections and proxies
+## Support & Feedback
+If you have questions, suggestions, or want to contribute, please open an issue or pull request on GitHub! My time is limited, so I will do my best to respond to issues and pull requests, I mostly created this integration for my own use.
 
 ## TODO
-- Detect if blinds needs calibration
-- Add ability to set speed
+- [ ] Detect if blinds need calibration
+- [ ] Add ability to set speed
+
+## Credits
+- Inspired by the original [RYSE Home Assistant integration](https://github.com/mohamedkallel82/ryse) by [@mohamedkallel82](https://github.com/mohamedkallel82).
