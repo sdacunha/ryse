@@ -12,6 +12,7 @@ from homeassistant.const import PERCENTAGE
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from datetime import datetime, timedelta
 from homeassistant.helpers.restore_state import RestoreEntity
 import re
@@ -31,11 +32,12 @@ async def async_setup_entry(
     coordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities([RyseBatterySensor(coordinator, entry)])
 
-class RyseBatterySensor(SensorEntity, RestoreEntity):
+class RyseBatterySensor(CoordinatorEntity, SensorEntity, RestoreEntity):
     """Representation of a RYSE battery sensor."""
 
     def __init__(self, coordinator, entry):
         """Initialize the RYSE battery sensor."""
+        super().__init__(coordinator)
         self._coordinator = coordinator
         self._entry = entry
         self._attr_name = f"{entry.data.get('name', entry.data['address'])} Battery"
@@ -46,10 +48,12 @@ class RyseBatterySensor(SensorEntity, RestoreEntity):
 
     @property
     def available(self):
-        return self._coordinator.available
+        return self._coordinator.available and not self._coordinator.initializing
 
     @property
     def native_value(self):
+        if self._coordinator.initializing:
+            return None
         return self._coordinator.battery
 
     @property
@@ -61,9 +65,20 @@ class RyseBatterySensor(SensorEntity, RestoreEntity):
             model="SmartShade",
         )
 
+    @property
+    def state(self):
+        if self._coordinator.initializing:
+            return "initializing"
+        return super().state
+
     async def async_added_to_hass(self) -> None:
         """Set up the battery monitoring."""
-        _LOGGER.debug("[BatterySensor] Registering battery, unavailable, and adv callbacks for sensor entity (device id: %s)", id(self._coordinator.device))
+        await super().async_added_to_hass()
+        _LOGGER.debug(
+            "[BatterySensor] async_added_to_hass: available=%s, initializing=%s (coordinator.available=%s, coordinator.initializing=%s)",
+            self.available, self._coordinator.initializing, self._coordinator.available, self._coordinator.initializing
+        )
+        self.async_write_ha_state()
         self._coordinator.device.add_battery_callback(self._handle_battery_update)
         self._coordinator.device.add_unavailable_callback(self._handle_device_unavailable)
         self._coordinator.device.add_adv_callback(self._handle_adv_seen)

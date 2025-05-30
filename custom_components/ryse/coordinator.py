@@ -11,6 +11,8 @@ from .const import HARDCODED_UUIDS
 
 _LOGGER = logging.getLogger(__name__)
 
+INIT_TIMEOUT = 10  # seconds
+
 class RyseCoordinator(ActiveBluetoothDataUpdateCoordinator):
     def __init__(self, hass: HomeAssistant, address: str, device: RyseDevice, name: str):
         super().__init__(
@@ -27,7 +29,9 @@ class RyseCoordinator(ActiveBluetoothDataUpdateCoordinator):
         self._position = None
         self._battery = None
         self._last_adv = None
+        # Always start as unavailable and initializing until a valid adv or GATT poll
         self._available = False
+        self._initializing = True
         self._ready_event = asyncio.Event()
         self._was_unavailable = True
         self._unavailable_cancel = bluetooth.async_track_unavailable(
@@ -36,6 +40,16 @@ class RyseCoordinator(ActiveBluetoothDataUpdateCoordinator):
         self._adv_cancel = bluetooth.async_register_callback(
             hass, self._handle_adv, {"address": address}, bluetooth.BluetoothScanningMode.ACTIVE
         )
+        # Start the initialization timer
+        self.hass.async_create_task(self._async_init_timeout())
+
+    async def _async_init_timeout(self):
+        await asyncio.sleep(INIT_TIMEOUT)
+        if self._initializing:
+            self._initializing = False
+            if not self._available:
+                _LOGGER.info(f"Device {self._name} did not become available after {INIT_TIMEOUT}s, marking as unavailable.")
+            self.async_update_listeners()
 
     @callback
     def _handle_adv(self, service_info, change):
@@ -61,7 +75,10 @@ class RyseCoordinator(ActiveBluetoothDataUpdateCoordinator):
                 else:
                     callback()
         self._last_adv = datetime.now()
+        # Only set available to True if we get a valid adv
         self._available = True
+        if self._initializing:
+            self._initializing = False
         if self._was_unavailable:
             _LOGGER.info(f"Device {self._name} is online")
             self._was_unavailable = False
@@ -69,41 +86,52 @@ class RyseCoordinator(ActiveBluetoothDataUpdateCoordinator):
 
     @callback
     def _handle_unavailable(self, service_info):
-        _LOGGER.info(f"[Coordinator] Device {self._name} became unavailable")
+        # ACTION 1: Add logging to confirm this is called
+        _LOGGER.warning(f"[Coordinator] _handle_unavailable called for {self._name} (address: {self.device.address})")
         self._available = False
         self._was_unavailable = True
+        # ACTION 2: Always force state update
         self.async_update_listeners()
 
     @callback
     def _needs_poll(self, service_info, seconds_since_last_poll):
-        # Only poll if hass is running, we need to poll, and we have a connectable BLE device
         ble_device = bluetooth.async_ble_device_from_address(self.hass, self.address, connectable=True)
-        return (
+        should_poll = (
             self.hass.state == self.hass.CoreState.running and
-            (self._position is None or self._battery is None or (seconds_since_last_poll or 0) > 3600)
+            self.device.poll_needed(seconds_since_last_poll)
             and bool(ble_device)
         )
+        _LOGGER.debug(
+            "[Coordinator] _needs_poll called: seconds_since_last_poll=%s, has_ble_device=%s, should_poll=%s, position=%s, battery=%s",
+            seconds_since_last_poll, bool(ble_device), should_poll, self._position, self._battery
+        )
+        return should_poll
 
     async def _async_update(self, service_info):
+        _LOGGER.debug("[Coordinator] _async_update called for %s (address: %s)", self._name, self.address)
         ble_device = bluetooth.async_ble_device_from_address(self.hass, self.address, connectable=True)
         if not ble_device:
+            _LOGGER.warning("[Coordinator] No BLE device found for %s during poll", self._name)
             self._available = False
             self._was_unavailable = True
             self.async_update_listeners()
             return
         self.device.set_ble_device(ble_device)
         if not await self.device.connect():
+            _LOGGER.warning("[Coordinator] Could not connect to %s during poll", self._name)
             self._available = False
             self._was_unavailable = True
             self.async_update_listeners()
             return
         try:
             data = await self.device.read_gatt(HARDCODED_UUIDS["rx_uuid"])
-            # Parse GATT data for position and battery
+            _LOGGER.debug("[Coordinator] GATT poll data for %s: %s", self._name, data)
             if len(data) >= 3:
                 self._position = data[1]
                 self._battery = data[2]
                 self._available = True
+                if self._initializing:
+                    self._initializing = False
                 if self._was_unavailable:
                     _LOGGER.info(f"Device {self._name} is online (via GATT poll)")
                     self._was_unavailable = False
@@ -111,6 +139,7 @@ class RyseCoordinator(ActiveBluetoothDataUpdateCoordinator):
             _LOGGER.error(f"[Coordinator] GATT poll failed: {e}")
             self._available = False
             self._was_unavailable = True
+            self.async_update_listeners()
         self.async_update_listeners()
 
     async def async_wait_ready(self, timeout=30):
@@ -133,6 +162,10 @@ class RyseCoordinator(ActiveBluetoothDataUpdateCoordinator):
     def available(self):
         return self._available
 
+    @property
+    def initializing(self):
+        return self._initializing
+
     async def async_update_battery(self, battery_level: int | None) -> None:
         """Update the battery level and notify listeners."""
         self._battery = battery_level
@@ -149,12 +182,14 @@ class RyseCoordinator(ActiveBluetoothDataUpdateCoordinator):
             if not ble_device:
                 self._available = False
                 self._was_unavailable = True
+                # ACTION 3: Always force state update
                 self.async_update_listeners()
                 return False
             self.device.set_ble_device(ble_device)
             if not await self.device.connect():
                 self._available = False
                 self._was_unavailable = True
+                # ACTION 3: Always force state update
                 self.async_update_listeners()
                 return False
         return True

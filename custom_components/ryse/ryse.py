@@ -120,4 +120,10 @@ class RyseDevice:
             if len(data) >= 3:
                 result['position'] = data[1]
                 result['battery'] = data[2]
-        return result 
+        return result
+
+    def poll_needed(self, seconds_since_last_poll):
+        """Determine if a poll is needed. For now, poll every 1 minute."""
+        if seconds_since_last_poll is None:
+            return True
+        return seconds_since_last_poll > 60 
