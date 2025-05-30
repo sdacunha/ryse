@@ -59,12 +59,17 @@ class RyseBatterySensor(SensorEntity, RestoreEntity):
 
     @property
     def available(self) -> bool:
-        """Return True if the sensor has been updated recently."""
+        """Return True if the sensor and the cover are available."""
+        # Try to get the cover entity for this device
+        cover_entity_id = f"cover.{self._entry.data.get('name', self._entry.data['address']).lower().replace(' ', '_')}"
+        cover = self.hass.states.get(cover_entity_id)
+        if cover is not None and cover.state == "unavailable":
+            return False
         now = datetime.now()
         _LOGGER.debug("Battery sensor available check: now=%s, last_update=%s", now, self._last_update)
         if self._last_update is None:
             return False
-        return now - self._last_update < timedelta(minutes=2)
+        return now - self._last_update < timedelta(hours=6)
 
     async def async_added_to_hass(self) -> None:
         """Set up the battery monitoring."""
