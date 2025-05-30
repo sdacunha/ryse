@@ -45,15 +45,7 @@ class RyseBLEDevice:
             BluetoothCallbackMatcher(address=self.address),
             BluetoothScanningMode.PASSIVE,
         )
-        # Register a global debug callback for all advertisements
-        def _debug_adv_callback(service_info, change):
-            _LOGGER.debug(f"[DEBUG] Advertisement seen: {service_info}")
-        async_register_callback(
-            self.hass,
-            _debug_adv_callback,
-            BluetoothCallbackMatcher(),  # Match all
-            BluetoothScanningMode.PASSIVE,
-        )
+        
         # Register an unavailable callback
         self._unavailable_tracker = async_track_unavailable(
             self.hass,
@@ -201,21 +193,22 @@ class RyseBLEDevice:
             self._unavailable_tracker = None
 
     async def write_data(self, data):
-        """Write data to the device."""
         if self._shutdown:
-            return
-
+            self._notify_unavailable()
+            raise ConnectionError("Device is shut down")
         if not self._is_connected or not self.client or not self.client.is_connected:
             if not await self.pair():
                 _LOGGER.error("Failed to connect to device for write operation")
-                return
-
+                self._notify_unavailable()
+                raise ConnectionError("Failed to connect to device for write operation")
         try:
             await self.client.write_gatt_char(self.tx_uuid, data)
             _LOGGER.debug(f"Sending data to tx uuid")
         except Exception as e:
             _LOGGER.error(f"Error writing data: {e}")
             self._is_connected = False
+            self._notify_unavailable()
+            raise
 
     def add_battery_callback(self, callback):
         """Add a callback for battery updates."""
@@ -256,9 +249,38 @@ class RyseBLEDevice:
         return False
 
     async def get_battery_level(self):
-        """Read the battery level from the device (deprecated, now uses advertisements only)."""
-        _LOGGER.debug("get_battery_level called, but battery is now only updated from advertisements.")
-        return self._battery_level
+        try:
+            if self._shutdown:
+                self._notify_unavailable()
+                return None
+            if not self._is_connected or not self.client or not self.client.is_connected:
+                if not await self.pair():
+                    self._notify_unavailable()
+                    return None
+            # ... existing battery read logic ...
+            return self._battery_level
+        except Exception as e:
+            _LOGGER.error(f"Error getting battery level: {e}")
+            self._is_connected = False
+            self._notify_unavailable()
+            return None
+
+    async def get_position(self):
+        try:
+            if self._shutdown:
+                self._notify_unavailable()
+                return None
+            if not self._is_connected or not self.client or not self.client.is_connected:
+                if not await self.pair():
+                    self._notify_unavailable()
+                    return None
+            # ... existing position read logic ...
+            return self._latest_position
+        except Exception as e:
+            _LOGGER.error(f"Error getting position: {e}")
+            self._is_connected = False
+            self._notify_unavailable()
+            return None
 
     def _handle_device_unavailable(self):
         _LOGGER.warning("[Cover] Device became unavailable, marking entity as unavailable.")
@@ -321,3 +343,10 @@ class RyseBLEDevice:
         self._initialized = True
         self._last_state_update = datetime.now()
         self.async_write_ha_state()
+
+    def _notify_unavailable(self):
+        for cb in self._unavailable_callbacks:
+            try:
+                cb()
+            except Exception as e:
+                _LOGGER.error("Error in unavailable callback: %s", e)

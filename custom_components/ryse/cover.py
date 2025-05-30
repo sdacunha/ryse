@@ -89,7 +89,6 @@ class SmartShadeCover(CoverEntity, RestoreEntity):
         self._state = "unavailable"
         self._initialized = False
         self._last_state_update = None
-        _LOGGER.warning(f"[Cover] _handle_device_unavailable: _initialized set to {self._initialized}, _last_state_update set to {self._last_state_update}")
         self.async_write_ha_state()
 
     @property
@@ -105,6 +104,7 @@ class SmartShadeCover(CoverEntity, RestoreEntity):
         self._state = "unavailable"
         self.async_write_ha_state()
         _LOGGER.debug(f"[Cover] Registering state tracking for {self.entity_id}")
+        self._device.add_unavailable_callback(self._handle_device_unavailable)
         self._device.setup_entity_state_tracking(self.entity_id, [self])
         self._restored_state = None
         last_state = await self.async_get_last_state()
@@ -186,18 +186,14 @@ class SmartShadeCover(CoverEntity, RestoreEntity):
         """Open the shade."""
         import time
         current_time = time.time()
-        
-        # Check if we're already opening or if we're in cooldown
         if self._is_opening or (current_time - self._last_command_time) < self._command_cooldown:
             _LOGGER.debug("Skipping open command - already opening or in cooldown")
             return
-            
         self._last_command_time = current_time
         self._is_opening = True
         self._is_closing = False
         self._state = "opening"
         self.async_write_ha_state()
-        
         try:
             pdata = build_position_packet(0x00)
             await self._device.write_data(pdata)
@@ -212,18 +208,14 @@ class SmartShadeCover(CoverEntity, RestoreEntity):
         """Close the shade."""
         import time
         current_time = time.time()
-        
-        # Check if we're already closing or if we're in cooldown
         if self._is_closing or (current_time - self._last_command_time) < self._command_cooldown:
             _LOGGER.debug("Skipping close command - already closing or in cooldown")
             return
-            
         self._last_command_time = current_time
         self._is_closing = True
         self._is_opening = False
         self._state = "closing"
         self.async_write_ha_state()
-        
         try:
             pdata = build_position_packet(0x64)
             await self._device.write_data(pdata)
@@ -238,15 +230,11 @@ class SmartShadeCover(CoverEntity, RestoreEntity):
         """Set the shade to a specific position."""
         import time
         current_time = time.time()
-        
-        # Check if we're in cooldown
         if (current_time - self._last_command_time) < self._command_cooldown:
             _LOGGER.debug("Skipping position command - in cooldown")
             return
-            
         self._last_command_time = current_time
         position = 100 - kwargs.get("position", 0)
-        
         if position == 100:
             self._is_closing = True
             self._is_opening = False
@@ -259,9 +247,7 @@ class SmartShadeCover(CoverEntity, RestoreEntity):
             self._is_closing = False
             self._is_opening = False
             self._state = "open"
-            
         self.async_write_ha_state()
-        
         try:
             pdata = build_position_packet(position)
             await self._device.write_data(pdata)

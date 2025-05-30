@@ -98,8 +98,9 @@ class RyseBatterySensor(SensorEntity, RestoreEntity):
 
     async def async_added_to_hass(self) -> None:
         """Set up the battery monitoring."""
-        _LOGGER.debug("[BatterySensor] Registering battery callback for sensor entity (device id: %s)", id(self._device))
+        _LOGGER.debug("[BatterySensor] Registering battery and unavailable callbacks for sensor entity (device id: %s)", id(self._device))
         self._device.add_battery_callback(self._handle_battery_update)
+        self._device.add_unavailable_callback(self._handle_device_unavailable)
         cover_available = False
         device_reg = dr.async_get(self.hass)
         entity_reg = er.async_get(self.hass)
@@ -111,6 +112,11 @@ class RyseBatterySensor(SensorEntity, RestoreEntity):
                     cover_state = self.hass.states.get(entity.entity_id)
                     if cover_state is not None and cover_state.state != "unavailable":
                         cover_available = True
+        # NEW: If the device is not connected or the cover is unavailable, mark battery sensor unavailable
+        if not getattr(self._device, '_is_connected', False) or not cover_available:
+            _LOGGER.debug("[BatterySensor] Device is offline or cover is unavailable at startup, marking battery sensor unavailable.")
+            self.mark_unavailable()
+            return
         if self._device._latest_battery is not None and cover_available:
             _LOGGER.debug("[BatterySensor] Immediate battery update from latest advertisement: %s", self._device._latest_battery)
             await self._handle_battery_update(self._device._latest_battery)
@@ -159,6 +165,7 @@ class RyseBatterySensor(SensorEntity, RestoreEntity):
         _LOGGER.debug("Battery sensor callback: received battery level %s", battery_level)
         self._attr_native_value = battery_level
         self._last_update = datetime.now()  # Set before writing state
+        self._attr_available = True  # Mark as available when new value is received
         _LOGGER.debug("Battery sensor _last_update set to %s", self._last_update)
         self.async_write_ha_state()
 
@@ -173,4 +180,10 @@ class RyseBatterySensor(SensorEntity, RestoreEntity):
         """Mark the battery sensor as available (unknown until a fresh value is received) and update state."""
         _LOGGER.debug(f"[BatterySensor] mark_available called for {self.entity_id}")
         self._attr_available = True
+        self.async_write_ha_state()
+
+    def _handle_device_unavailable(self):
+        _LOGGER.warning("[BatterySensor] Device became unavailable, marking battery sensor as unavailable.")
+        self._attr_available = False
+        self._attr_native_value = None
         self.async_write_ha_state() 
