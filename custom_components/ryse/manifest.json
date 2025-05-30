@@ -2,7 +2,7 @@
   "domain": "ryse",
   "name": "RYSE SmartShade",
   "description": "RYSE SmartShade Bluetooth integration for Home Assistant",
-  "version": "1.0.7",
+  "version": "1.0.9",
   "documentation": "https://github.com/sdacunha/ryse",
   "dependencies": ["bluetooth_adapters"],
   "integration_type": "device",
