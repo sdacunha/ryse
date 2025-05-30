@@ -13,12 +13,12 @@ DOMAIN = "ryse"
 
 async def async_setup(hass: HomeAssistant, config: dict):
     """Set up the RYSE component."""
-    _LOGGER.debug("Setting up RYSE Device integration")
+    _LOGGER.info("Setting up RYSE Device integration")
     return True
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up RYSE from a config entry."""
-    _LOGGER.debug("Setting up RYSE entry: %s", entry.data)
+    _LOGGER.info("Setting up RYSE entry: %s", entry.data)
     
     # Create device instance
     device = RyseBLEDevice(

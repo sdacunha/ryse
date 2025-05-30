@@ -17,6 +17,7 @@ from bleak import BleakClient, BleakError
 from homeassistant.components import bluetooth
 from homeassistant.core import callback
 from .const import DOMAIN, HARDCODED_UUIDS
+from datetime import datetime
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -130,10 +131,10 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     _LOGGER.error(f"Pairing failed for device: {address}")
                     return self.async_abort(reason="pairing_failed")
             except NotImplementedError:
-                _LOGGER.info(f"Pairing not supported on this platform for device: {address}, proceeding without explicit pairing.")
+                _LOGGER.error(f"Pairing not supported on this platform for device: {address}, proceeding without explicit pairing.")
                 pass
             await client.disconnect()
-            _LOGGER.info(f"Disconnected from device: {address}")
+            _LOGGER.warning(f"Disconnected from device: {address}")
         except Exception as e:
             _LOGGER.error(f"Failed to pair with RYSE device {address}: {e}")
             return self.async_abort(reason="pairing_failed")
@@ -192,3 +193,26 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._callback()
             self._callback = None
         return await super().async_step_abort(user_input)
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        self._restored_state = None
+        last_state = await self.async_get_last_state()
+        if last_state and last_state.state not in (None, "unknown", "unavailable"):
+            _LOGGER.debug("[Cover] Storing last known state for later: %s", last_state.state)
+            self._restored_state = last_state
+        # Always start as unknown until a fresh value is received
+        self._state = "unknown"
+        self._initialized = False
+        self.async_write_ha_state()
+
+    async def _update_position(self, position):
+        if 0 <= position <= 100:
+            self._current_position = 100 - position
+            self._state = "open" if position < 100 else "closed"
+            self._is_closing = False
+            self._is_opening = False
+            self._last_state_update = datetime.now()
+            self._initialized = True
+            _LOGGER.debug(f"Updated cover position: {position}")
+        self.async_write_ha_state()

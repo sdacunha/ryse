@@ -7,6 +7,7 @@ from homeassistant.helpers.restore_state import RestoreEntity
 import asyncio
 from homeassistant.helpers.entity import DeviceInfo
 import re
+from homeassistant.helpers.event import async_track_time_interval
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -59,13 +60,13 @@ class SmartShadeCover(CoverEntity, RestoreEntity):
         self._last_state_update = None
         self._initialized = False
         self._initial_read_done = False
-
-        # Register the callbacks
+        # Register callbacks
         self._device.update_callback = self._update_position
         self._device.add_battery_callback(self._update_battery)
+        self._device.add_unavailable_callback(self._handle_device_unavailable)
 
     async def _update_position(self, position):
-        """Update cover position when receiving notification."""
+        """Update cover position when receiving notification (advertisement)."""
         if 0 <= position <= 100:
             self._current_position = 100 - position
             self._state = "open" if position < 100 else "closed"
@@ -73,13 +74,22 @@ class SmartShadeCover(CoverEntity, RestoreEntity):
             self._is_opening = False
             self._last_state_update = datetime.now()
             self._initialized = True
-            _LOGGER.debug(f"Updated cover position: {position}")
+            _LOGGER.debug(f"[Cover] _update_position: _initialized set to {self._initialized}, _last_state_update set to {self._last_state_update}")
         self.async_write_ha_state()
 
     async def _update_battery(self, battery_level):
         """Update battery level when received from device."""
         self._battery_level = battery_level
         self._initialized = True
+        _LOGGER.debug(f"[Cover] _update_battery: _initialized set to {self._initialized}")
+        self.async_write_ha_state()
+
+    def _handle_device_unavailable(self):
+        _LOGGER.warning("[Cover] Device became unavailable, marking entity as unavailable.")
+        self._state = "unavailable"
+        self._initialized = False
+        self._last_state_update = None
+        _LOGGER.warning(f"[Cover] _handle_device_unavailable: _initialized set to {self._initialized}, _last_state_update set to {self._last_state_update}")
         self.async_write_ha_state()
 
     @property
@@ -88,31 +98,53 @@ class SmartShadeCover(CoverEntity, RestoreEntity):
         return self._battery_level
 
     async def async_added_to_hass(self):
-        """When entity is added to hass."""
         await super().async_added_to_hass()
-        
-        # First try to restore from last state
+        self._initialized = False
+        self._last_state_update = None
+        _LOGGER.debug(f"[Cover] async_added_to_hass: _initialized set to {self._initialized}, _last_state_update set to {self._last_state_update}")
+        self._state = "unavailable"
+        self.async_write_ha_state()
+        _LOGGER.debug(f"[Cover] Registering state tracking for {self.entity_id}")
+        self._device.setup_entity_state_tracking(self.entity_id, [self])
+        self._restored_state = None
         last_state = await self.async_get_last_state()
         if last_state and last_state.state not in (None, "unknown", "unavailable"):
-            _LOGGER.info("[Cover] Restoring last known state: %s", last_state.state)
-            self._state = last_state.state
-            if "current_position" in last_state.attributes:
-                self._current_position = int(last_state.attributes["current_position"])
-            self._restored = True
-            self._initialized = True
-            self.async_write_ha_state()
-
-        # Then update from latest advertisement if available
+            _LOGGER.debug("[Cover] Storing last known state for later: %s", last_state.state)
+            self._restored_state = last_state
+        _LOGGER.debug(f"[Cover] async_added_to_hass: _device._latest_position = {self._device._latest_position}")
         if self._device._latest_position is not None:
-            _LOGGER.info("[Cover] Immediate position update from latest advertisement: %s", self._device._latest_position)
-            await self._update_position(self._device._latest_position)
+            self.hass.async_create_task(self._update_position(self._device._latest_position))
         else:
-            # Only attempt a GATT read if no recent advertisement, with timeout
-            _LOGGER.info("[Cover] No recent advertisement, attempting GATT read for initial state (timeout 10s)")
+            # No advertisement seen yet, try GATT poll
             try:
-                await asyncio.wait_for(self._read_initial_state(), timeout=10)
-            except asyncio.TimeoutError:
-                _LOGGER.warning("[Cover] Timed out waiting for GATT read for initial state (10s)")
+                _LOGGER.debug("[Cover] No advertisement at startup, attempting GATT poll for availability.")
+                await self._read_initial_state()
+            except Exception as e:
+                _LOGGER.error(f"[Cover] GATT poll at startup failed: {e}")
+            if self._device._latest_position is None:
+                self._state = "unavailable"
+                self.async_write_ha_state()
+        # Start periodic GATT poll/check
+        async def _gatt_poll(now):
+            if self._last_state_update is None or (datetime.now() - self._last_state_update > timedelta(minutes=10)):
+                _LOGGER.debug(f"[Cover] GATT poll: last update is stale, attempting GATT read before marking unavailable.")
+                try:
+                    await self._read_initial_state()
+                    if self._last_state_update is None or (datetime.now() - self._last_state_update > timedelta(minutes=10)):
+                        _LOGGER.debug(f"[Cover] GATT poll: still stale after GATT read, marking unavailable.")
+                        self.mark_unavailable()
+                    else:
+                        _LOGGER.debug(f"[Cover] GATT poll: state refreshed, not marking unavailable.")
+                except Exception as e:
+                    _LOGGER.error(f"[Cover] GATT poll failed: {e}")
+                    self.mark_unavailable()
+        self._gatt_poll_unsub = async_track_time_interval(self.hass, _gatt_poll, timedelta(minutes=10))
+
+    async def async_will_remove_from_hass(self):
+        if hasattr(self, '_gatt_poll_unsub') and self._gatt_poll_unsub:
+            self._gatt_poll_unsub()
+            self._gatt_poll_unsub = None
+        await super().async_will_remove_from_hass()
 
     async def _read_initial_state(self):
         """Read initial state from device via GATT."""
@@ -134,7 +166,7 @@ class SmartShadeCover(CoverEntity, RestoreEntity):
         finally:
             # If we still don't have a state, assume closed
             if self._current_position is None:
-                _LOGGER.info("[Cover] No position known after GATT read, assuming closed state")
+                _LOGGER.debug("[Cover] No position known after GATT read, assuming closed state")
                 self._state = "closed"
                 self._current_position = 0
                 self._initialized = True
@@ -142,28 +174,13 @@ class SmartShadeCover(CoverEntity, RestoreEntity):
 
     @property
     def available(self) -> bool:
-        """Return True if the entity has been initialized and device is reachable."""
+        result = False
         if not self._initialized:
-            _LOGGER.debug("[Cover] Entity not yet initialized")
-            return False
-        # If we have a state update, check if it's recent
-        if self._last_state_update:
-            time_since_update = datetime.now() - self._last_state_update
-            if time_since_update > timedelta(minutes=30):
-                _LOGGER.debug("[Cover] Last state update was %s ago", time_since_update)
-                return False
-        # If device is not connected and no recent advertisement, unavailable
-        if not getattr(self._device, 'client', None) or not getattr(self._device.client, 'is_connected', False):
-            if self._device._latest_position is None or (
-                self._last_state_update and datetime.now() - self._last_state_update > timedelta(minutes=30)
-            ):
-                _LOGGER.debug("[Cover] Device not connected and no recent advertisement")
-                return False
-        # If we have a state and position, we're available
-        if self._state is not None and self._current_position is not None:
-            return True
-        _LOGGER.debug("[Cover] No valid state or position")
-        return False
+            result = False
+        elif self._last_state_update and (datetime.now() - self._last_state_update < timedelta(minutes=10)):
+            result = True
+        _LOGGER.debug(f"[Cover] available property: _initialized={self._initialized}, _last_state_update={self._last_state_update}, returns {result}")
+        return result
 
     async def async_open_cover(self, **kwargs):
         """Open the shade."""
@@ -188,6 +205,7 @@ class SmartShadeCover(CoverEntity, RestoreEntity):
         except Exception as e:
             _LOGGER.error(f"Error sending open command: {e}")
             self._is_opening = False
+            self.mark_unavailable()
             self.async_write_ha_state()
 
     async def async_close_cover(self, **kwargs):
@@ -213,6 +231,7 @@ class SmartShadeCover(CoverEntity, RestoreEntity):
         except Exception as e:
             _LOGGER.error(f"Error sending close command: {e}")
             self._is_closing = False
+            self.mark_unavailable()
             self.async_write_ha_state()
 
     async def async_set_cover_position(self, **kwargs):
@@ -251,6 +270,7 @@ class SmartShadeCover(CoverEntity, RestoreEntity):
             _LOGGER.error(f"Error sending position command: {e}")
             self._is_closing = False
             self._is_opening = False
+            self.mark_unavailable()
             self.async_write_ha_state()
 
     @property
@@ -286,4 +306,19 @@ class SmartShadeCover(CoverEntity, RestoreEntity):
             model="Ryse SmartShade",
             configuration_url="https://github.com/sdacunha/ryse"
         )
+
+    def mark_unavailable(self):
+        """Mark the cover as unavailable and update state."""
+        _LOGGER.debug(f"[Cover] mark_unavailable called for {self.entity_id}")
+        self._state = "unavailable"
+        self._initialized = False
+        self._last_state_update = None
+        _LOGGER.debug(f"[Cover] mark_unavailable: _initialized set to {self._initialized}, _last_state_update set to {self._last_state_update}")
+        self.async_write_ha_state()
+
+    def mark_available(self):
+        """Mark the cover as available (unknown until a fresh value is received) and update state."""
+        _LOGGER.debug(f"[Cover] mark_available called for {self.entity_id}")
+        self._state = "unknown"
+        self.async_write_ha_state()
 

@@ -4,7 +4,7 @@
   "description": "RYSE SmartShade Bluetooth integration for Home Assistant",
   "version": "1.0.7",
   "documentation": "https://github.com/sdacunha/ryse",
-  "dependencies": ["bluetooth"],
+  "dependencies": ["bluetooth_adapters"],
   "integration_type": "device",
   "codeowners": ["@sdacunha"],
   "requirements": ["bleak==0.22.3"],
