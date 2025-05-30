@@ -2,7 +2,7 @@
   "domain": "ryse",
   "name": "RYSE",
   "version": "1.0.0",
-  "documentation": "https://www.helloryse.com/",
+  "documentation": "https://github.com/sdacunha/ryse",
   "dependencies": ["bluetooth"],
   "integration_type": "device",
   "codeowners": ["@ryse_github"],
