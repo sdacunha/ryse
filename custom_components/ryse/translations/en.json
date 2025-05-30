@@ -1,4 +1,6 @@
 {
+  "flow_title": "{name}",
+  "title": "RYSE SmartShade",
   "config": {
     "step": {
       "user": {
@@ -19,7 +21,8 @@
     },
     "error": {
       "not_in_pairing_mode": "The selected device is not in pairing mode. Please press the pairing button on your RYSE Smart Shade and try again.",
-      "no_devices_found": "No RYSE Smart Shades found. Please make sure your device is powered on and in pairing mode, then try again."
+      "no_devices_found": "No RYSE Smart Shades found. Please make sure your device is powered on and in pairing mode, then try again.",
+      "failed_to_pair": "Failed to pair with the RYSE device. Please ensure it is in pairing mode and not already paired with another device, then try again."
     }
   }
 }

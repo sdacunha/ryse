@@ -15,6 +15,7 @@ from homeassistant.helpers.entity import DeviceInfo
 from datetime import datetime, timedelta
 from homeassistant.helpers.restore_state import RestoreEntity
 import re
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from .bluetooth import RyseBLEDevice
 from .const import DOMAIN
@@ -59,17 +60,36 @@ class RyseBatterySensor(SensorEntity, RestoreEntity):
 
     @property
     def available(self) -> bool:
-        """Return True if the sensor and the cover are available."""
-        # Try to get the cover entity for this device
-        cover_entity_id = f"cover.{self._entry.data.get('name', self._entry.data['address']).lower().replace(' ', '_')}"
-        cover = self.hass.states.get(cover_entity_id)
-        if cover is not None and cover.state == "unavailable":
-            return False
+        """Return True if the sensor and the cover are available, with robust edge case handling."""
+        device_reg = dr.async_get(self.hass)
+        entity_reg = er.async_get(self.hass)
+        device = device_reg.async_get_device(identifiers={(DOMAIN, self._device.address)})
+        cover_found = False
+        cover_state_val = None
+        if device:
+            device_id = device.id
+            for entity in entity_reg.entities.values():
+                if entity.device_id == device_id and entity.domain == "cover":
+                    cover_found = True
+                    cover_state = self.hass.states.get(entity.entity_id)
+                    if cover_state is not None:
+                        cover_state_val = cover_state.state
+                        if cover_state.state == "unavailable":
+                            _LOGGER.debug(f"Battery unavailable: cover entity {entity.entity_id} is unavailable.")
+                            return False
+        if not cover_found:
+            _LOGGER.debug(f"No cover entity found for device {self._device.address}; battery sensor remains available until timeout.")
+            if self._last_update is not None and (datetime.now() - self._last_update > timedelta(hours=6)):
+                _LOGGER.warning(f"Cover entity for device {self._device.address} has been missing for over 6 hours. Marking battery sensor unavailable.")
+                return False
         now = datetime.now()
-        _LOGGER.debug("Battery sensor available check: now=%s, last_update=%s", now, self._last_update)
         if self._last_update is None:
+            _LOGGER.debug(f"Battery unavailable: no last update. cover_found={cover_found}, cover_state={cover_state_val}")
             return False
-        return now - self._last_update < timedelta(hours=6)
+        available = now - self._last_update < timedelta(hours=6)
+        if not available:
+            _LOGGER.debug(f"Battery unavailable: last update too old. last_update={self._last_update}, now={now}")
+        return available
 
     async def async_added_to_hass(self) -> None:
         """Set up the battery monitoring."""
@@ -95,5 +115,6 @@ class RyseBatterySensor(SensorEntity, RestoreEntity):
         """Handle battery level updates."""
         _LOGGER.debug("Battery sensor callback: received battery level %s", battery_level)
         self._attr_native_value = battery_level
-        self._last_update = datetime.now()
+        self._last_update = datetime.now()  # Set before writing state
+        _LOGGER.debug("Battery sensor _last_update set to %s", self._last_update)
         self.async_write_ha_state() 

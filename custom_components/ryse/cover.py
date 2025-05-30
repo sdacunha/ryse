@@ -142,22 +142,26 @@ class SmartShadeCover(CoverEntity, RestoreEntity):
 
     @property
     def available(self) -> bool:
-        """Return True if the entity has been initialized."""
+        """Return True if the entity has been initialized and device is reachable."""
         if not self._initialized:
             _LOGGER.debug("[Cover] Entity not yet initialized")
             return False
-            
         # If we have a state update, check if it's recent
         if self._last_state_update:
             time_since_update = datetime.now() - self._last_state_update
             if time_since_update > timedelta(minutes=30):
                 _LOGGER.debug("[Cover] Last state update was %s ago", time_since_update)
                 return False
-                
+        # If device is not connected and no recent advertisement, unavailable
+        if not getattr(self._device, 'client', None) or not getattr(self._device.client, 'is_connected', False):
+            if self._device._latest_position is None or (
+                self._last_state_update and datetime.now() - self._last_state_update > timedelta(minutes=30)
+            ):
+                _LOGGER.debug("[Cover] Device not connected and no recent advertisement")
+                return False
         # If we have a state and position, we're available
         if self._state is not None and self._current_position is not None:
             return True
-            
         _LOGGER.debug("[Cover] No valid state or position")
         return False
 
@@ -279,7 +283,7 @@ class SmartShadeCover(CoverEntity, RestoreEntity):
             identifiers={(DOMAIN, self._device.address)},
             name=name,
             manufacturer="RYSE Inc.",
-            model="GR-0103",
+            model="Ryse SmartShade",
             configuration_url="https://github.com/sdacunha/ryse"
         )
 

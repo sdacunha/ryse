@@ -10,7 +10,6 @@ from homeassistant.components.bluetooth import (
     async_get_scanner,
     async_ble_device_from_address,
     BluetoothScanningMode,
-    async_get_bluetooth,
 )
 from bleak import BleakClient, BleakError
 

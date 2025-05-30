@@ -1,7 +1,8 @@
 {
   "domain": "ryse",
-  "name": "RYSE",
-  "version": "1.0.0",
+  "name": "RYSE SmartShade",
+  "description": "RYSE SmartShade Bluetooth integration for Home Assistant",
+  "version": "1.0.7",
   "documentation": "https://github.com/sdacunha/ryse",
   "dependencies": ["bluetooth"],
   "integration_type": "device",
@@ -12,6 +13,9 @@
   "bluetooth": [
     {
       "local_name": "RZSS*"
+    },
+    {
+      "service_uuid": "a72f2800-b0bd-498b-b4cd-4a3901388238"
     }
   ],
   "supported_platforms": ["cover", "sensor"]

@@ -16,7 +16,7 @@ from homeassistant.components.bluetooth import (
 from bleak import BleakClient, BleakError
 from homeassistant.components import bluetooth
 from homeassistant.core import callback
-from .const import DOMAIN, HARDCODED_UUIDS, RYSE_SERVICE_UUIDS
+from .const import DOMAIN, HARDCODED_UUIDS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -52,6 +52,7 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         existing_addresses = {entry.data["address"] for entry in existing_entries if "address" in entry.data}
         self._update_discovered_devices(existing_addresses)
         errors = {}
+        selected_label = None
         if user_input is not None:
             if user_input.get("cancel"):
                 return self.async_abort(reason="user_cancelled")
@@ -60,6 +61,7 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "invalid_device"
             else:
                 in_pairing = self._discovered_devices[address]["in_pairing"]
+                selected_label = self._discovered_devices[address]["label"]
                 if not in_pairing:
                     errors["base"] = "not_in_pairing_mode"
                 else:
@@ -75,6 +77,9 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             "Press the button on your RYSE SmartShade to put it in pairing mode, then select it below and click Pair. "
             "Devices in pairing mode are marked. If you don't see your device in pairing mode, press the button and click Pair again to refresh the list."
         )
+        # Set the dynamic title using title_placeholders
+        dynamic_title = selected_label or "RYSE SmartShade"
+        self.context["title_placeholders"] = {"name": dynamic_title}
         return self.async_show_form(
             step_id="scan",
             data_schema=data_schema,
@@ -172,11 +177,13 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         name = getattr(discovery_info, "name", "RYSE SmartShade")
         display_name = f"{name} ({address})"
         self._discovered_devices[address] = display_name
+        # Set the dynamic title using title_placeholders
+        self.context["title_placeholders"] = {"name": display_name}
         return self.async_show_form(
             step_id="scan",
             data_schema=vol.Schema({}),
             description_placeholders={"info": f"RYSE SmartShade {display_name} found. Press Next to pair."},
-            errors={},
+            errors={}
         )
 
     async def async_step_abort(self, user_input=None):
