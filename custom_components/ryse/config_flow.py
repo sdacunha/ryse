@@ -72,7 +72,7 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Required("device_address", description={"suggested_value": None, "translation_key": "device_address"}): vol.In(device_options)
         }) if device_options else vol.Schema({})
         description = (
-            "Press the button on your RYSE Smart Shade to put it in pairing mode, then select it below and click Pair. "
+            "Press the button on your RYSE SmartShade to put it in pairing mode, then select it below and click Pair. "
             "Devices in pairing mode are marked. If you don't see your device in pairing mode, press the button and click Pair again to refresh the list."
         )
         return self.async_show_form(
@@ -133,13 +133,33 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             _LOGGER.error(f"Failed to pair with RYSE device {address}: {e}")
             return self.async_abort(reason="pairing_failed")
 
-        return self.async_create_entry(
-            title=f"RYSE ({address})",
-            data={
-                "address": address,
-                "rx_uuid": HARDCODED_UUIDS["rx_uuid"],
-                "tx_uuid": HARDCODED_UUIDS["tx_uuid"],
-            },
+        # Proceed to naming step
+        self._pending_entry_data = {
+            "address": address,
+            "rx_uuid": HARDCODED_UUIDS["rx_uuid"],
+            "tx_uuid": HARDCODED_UUIDS["tx_uuid"],
+        }
+        return await self.async_step_name()
+
+    async def async_step_name(self, user_input=None):
+        errors = {}
+        if user_input is not None:
+            name = user_input.get("name")
+            if not name or not name.strip():
+                errors["name"] = "Name required"
+            else:
+                # Save the name and create the entry
+                data = dict(self._pending_entry_data)
+                data["name"] = name.strip()
+                return self.async_create_entry(
+                    title=name.strip(),
+                    data=data,
+                )
+        return self.async_show_form(
+            step_id="name",
+            data_schema=vol.Schema({vol.Required("name"): str}),
+            description_placeholders={"info": "Enter a name for your SmartShade."},
+            errors=errors,
         )
 
     async def async_step_bluetooth(self, discovery_info):
@@ -149,13 +169,13 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         existing_entries = self.hass.config_entries.async_entries(DOMAIN)
         if any(entry.data.get("address") == address for entry in existing_entries):
             return self.async_abort(reason="already_configured")
-        name = getattr(discovery_info, "name", "RYSE Smart Shade")
+        name = getattr(discovery_info, "name", "RYSE SmartShade")
         display_name = f"{name} ({address})"
         self._discovered_devices[address] = display_name
         return self.async_show_form(
             step_id="scan",
             data_schema=vol.Schema({}),
-            description_placeholders={"info": f"RYSE Smart Shade {display_name} found. Press Next to pair."},
+            description_placeholders={"info": f"RYSE SmartShade {display_name} found. Press Next to pair."},
             errors={},
         )
 

@@ -5,12 +5,14 @@ from .const import DOMAIN
 from datetime import datetime, timedelta
 from homeassistant.helpers.restore_state import RestoreEntity
 import asyncio
+from homeassistant.helpers.entity import DeviceInfo
+import re
 
 _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(hass, entry, async_add_entities):
     device = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([SmartShadeCover(device)])
+    async_add_entities([SmartShadeCover(device, entry)])
 
 def build_position_packet(pos: int) -> bytes:
     """Convert MAC address to reversed hex array, prepend a prefix with a position last byte, and append a checksum."""
@@ -39,9 +41,12 @@ def build_get_position_packet() -> bytes:
     return data_bytes + bytes([checksum])
 
 class SmartShadeCover(CoverEntity, RestoreEntity):
-    def __init__(self, device):
+    def __init__(self, device, entry):
         self._device = device
-        self._attr_name = f"Smart Shade {device.address}"
+        self._entry = entry
+        name = entry.data.get("name", f"SmartShade {device.address}")
+        self._attr_name = name
+        sanitized = re.sub(r'[^a-z0-9_]+', '', re.sub(r'\W+', '_', name.lower()))
         self._attr_unique_id = f"smart_shade_{device.address}"
         self._state = None
         self._current_position = None
@@ -265,5 +270,16 @@ class SmartShadeCover(CoverEntity, RestoreEntity):
             CoverEntityFeature.OPEN |
             CoverEntityFeature.CLOSE |
             CoverEntityFeature.SET_POSITION
+        )
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        name = self._entry.data.get("name", f"SmartShade {self._device.address}")
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._device.address)},
+            name=name,
+            manufacturer="RYSE Inc.",
+            model="GR-0103",
+            configuration_url="https://github.com/sdacunha/ryse"
         )
 

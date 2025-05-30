@@ -14,6 +14,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity import DeviceInfo
 from datetime import datetime, timedelta
 from homeassistant.helpers.restore_state import RestoreEntity
+import re
 
 from .bluetooth import RyseBLEDevice
 from .const import DOMAIN
@@ -36,7 +37,8 @@ class RyseBatterySensor(SensorEntity, RestoreEntity):
         """Initialize the RYSE battery sensor."""
         self._device = device
         self._entry = entry
-        self._attr_name = f"Smart Shade Battery {entry.data['address']}"
+        name = entry.data.get("name", entry.data['address'])
+        self._attr_name = f"{name} Battery"
         self._attr_unique_id = f"{entry.entry_id}_battery"
         self._attr_native_unit_of_measurement = PERCENTAGE
         self._attr_device_class = SensorDeviceClass.BATTERY
@@ -47,11 +49,12 @@ class RyseBatterySensor(SensorEntity, RestoreEntity):
     @property
     def device_info(self) -> DeviceInfo:
         """Return device info."""
+        name = self._entry.data.get("name", self._entry.data['address'])
         return DeviceInfo(
-            identifiers={(DOMAIN, self._entry.entry_id)},
-            name=f"RYSE Smart Shade {self._entry.data['address']}",
-            manufacturer="RYSE",
-            model="Smart Shade",
+            identifiers={(DOMAIN, self._device.address)},
+            name=name,
+            manufacturer="RYSE Inc.",
+            model="GR-0103",
         )
 
     @property
