@@ -8,6 +8,7 @@ import logging
 import inspect
 from .ryse import RyseDevice
 from .const import HARDCODED_UUIDS
+from homeassistant.exceptions import HomeAssistantError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -201,10 +202,14 @@ class RyseCoordinator(ActiveBluetoothDataUpdateCoordinator):
 
     async def async_open_cover(self) -> None:
         """Open the cover."""
+        if self.position is not None and self.position == 0:
+            return
         if await self._ensure_connected():
             await self.device.open()
 
     async def async_close_cover(self) -> None:
         """Close the cover."""
+        if self.position is not None and self.position == 100:
+            return
         if await self._ensure_connected():
             await self.device.close() 
