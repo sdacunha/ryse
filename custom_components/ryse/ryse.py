@@ -1,4 +1,5 @@
 import logging
+import asyncio
 from bleak import BleakClient
 from bleak.backends.device import BLEDevice
 from .const import HARDCODED_UUIDS
@@ -20,6 +21,8 @@ class RyseDevice:
         self._latest_battery = None
         self._battery_level = None
         self._is_connected = False
+        self._connection_lock = asyncio.Lock()
+        self._connecting = False
 
     def add_battery_callback(self, callback):
         """Add a callback for battery updates."""
@@ -44,34 +47,78 @@ class RyseDevice:
         if hasattr(service_info, 'device') and service_info.device:
             self.set_ble_device(service_info.device)
 
-    async def connect(self, timeout=15, max_attempts=3):
-        for attempt in range(max_attempts):
-            try:
-                if self.client and self.client.is_connected:
-                    self._is_connected = True
-                    return True
-                if not self.ble_device:
-                    raise ConnectionError("No BLEDevice available for connection")
-                self.client = BleakClient(self.ble_device)
-                await self.client.connect(timeout=timeout)
-                if self.client.is_connected:
-                    self._is_connected = True
-                    return True
-            except Exception as e:
-                _LOGGER.error(f"Pair attempt {attempt+1} failed: {e}")
-        _LOGGER.error("All pair attempts failed.")
-        self._is_connected = False
-        for callback in self._unavailable_callbacks:
-            callback()
-        return False
+    async def connect(self, timeout=10, max_attempts=3):
+        """Connect with exponential backoff retry logic and connection state tracking."""
+        async with self._connection_lock:
+            # Already connected
+            if self.client and self.client.is_connected:
+                self._is_connected = True
+                self._connecting = False
+                _LOGGER.debug(f"[{self.address}] Already connected")
+                return True
 
-    async def disconnect(self):
-        if self.client and self.client.is_connected:
-            await self.client.disconnect()
-            self.client = None
+            # Prevent concurrent connection attempts
+            if self._connecting:
+                _LOGGER.debug(f"[{self.address}] Connection already in progress")
+                return False
+
+            self._connecting = True
+
+            if not self.ble_device:
+                _LOGGER.error(f"[{self.address}] No BLEDevice available for connection")
+                self._connecting = False
+                raise ConnectionError("No BLEDevice available for connection")
+
+            # Exponential backoff: 10s, 15s, 20s
+            timeouts = [10, 15, 20]
+            backoff_delays = [0, 0.5, 1.0]  # No delay first attempt, then 500ms, 1s
+
+            for attempt in range(max_attempts):
+                try:
+                    attempt_timeout = timeouts[attempt] if attempt < len(timeouts) else timeout
+
+                    # Backoff delay before retry (except first attempt)
+                    if backoff_delays[attempt] > 0:
+                        _LOGGER.debug(f"[{self.address}] Waiting {backoff_delays[attempt]}s before retry {attempt+1}")
+                        await asyncio.sleep(backoff_delays[attempt])
+
+                    _LOGGER.info(f"[{self.address}] Connection attempt {attempt+1}/{max_attempts} (timeout: {attempt_timeout}s)")
+
+                    self.client = BleakClient(self.ble_device)
+                    await self.client.connect(timeout=attempt_timeout)
+
+                    if self.client.is_connected:
+                        self._is_connected = True
+                        self._connecting = False
+                        _LOGGER.info(f"[{self.address}] Successfully connected on attempt {attempt+1}")
+                        return True
+
+                except asyncio.TimeoutError:
+                    _LOGGER.warning(f"[{self.address}] Connection attempt {attempt+1} timed out after {attempt_timeout}s")
+                except Exception as e:
+                    _LOGGER.error(f"[{self.address}] Connection attempt {attempt+1} failed: {type(e).__name__}: {e}")
+
+            # All attempts failed
+            _LOGGER.error(f"[{self.address}] All {max_attempts} connection attempts failed")
             self._is_connected = False
+            self._connecting = False
             for callback in self._unavailable_callbacks:
                 callback()
+            return False
+
+    async def disconnect(self):
+        """Disconnect from the device with proper state tracking."""
+        async with self._connection_lock:
+            if self.client and self.client.is_connected:
+                _LOGGER.debug(f"[{self.address}] Disconnecting")
+                await self.client.disconnect()
+                self.client = None
+                self._is_connected = False
+                self._connecting = False
+                for callback in self._unavailable_callbacks:
+                    callback()
+            else:
+                _LOGGER.debug(f"[{self.address}] Already disconnected")
 
     async def set_position(self, position: int):
         if not (0 <= position <= 100):
@@ -123,7 +170,9 @@ class RyseDevice:
         return result
 
     def poll_needed(self, seconds_since_last_poll):
-        """Determine if a poll is needed. For now, poll every 1 minute."""
+        """Determine if a poll is needed. Poll every 5 minutes as fallback (rely on advertisements primarily)."""
         if seconds_since_last_poll is None:
             return True
-        return seconds_since_last_poll > 60 
+        # Changed from 60s to 300s (5 minutes) to rely more on advertisements
+        # Only poll as fallback when device stops advertising
+        return seconds_since_last_poll > 300 

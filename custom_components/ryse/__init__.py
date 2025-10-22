@@ -40,13 +40,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     _LOGGER.debug("Unloading RYSE entry: %s", entry.data)
-    
+
     # Unload platforms
     unload_ok = await hass.config_entries.async_unload_platforms(entry, ["cover", "sensor"])
-    
+
     if unload_ok:
-        # Clean up device
-        device = hass.data[DOMAIN].pop(entry.entry_id)
-        await device.unpair()
-    
+        # Clean up coordinator and device
+        coordinator = hass.data[DOMAIN].pop(entry.entry_id)
+        # Disconnect the device if connected
+        if coordinator.device.client and coordinator.device.client.is_connected:
+            await coordinator.device.disconnect()
+            _LOGGER.debug("Disconnected device during unload: %s", entry.data["address"])
+
     return unload_ok

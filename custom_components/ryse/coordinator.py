@@ -7,12 +7,10 @@ import asyncio
 import logging
 import inspect
 from .ryse import RyseDevice
-from .const import HARDCODED_UUIDS
+from .const import HARDCODED_UUIDS, DEFAULT_INIT_TIMEOUT
 from homeassistant.exceptions import HomeAssistantError
 
 _LOGGER = logging.getLogger(__name__)
-
-INIT_TIMEOUT = 10  # seconds
 
 class RyseCoordinator(ActiveBluetoothDataUpdateCoordinator):
     def __init__(self, hass: HomeAssistant, address: str, device: RyseDevice, name: str):
@@ -45,11 +43,11 @@ class RyseCoordinator(ActiveBluetoothDataUpdateCoordinator):
         self.hass.async_create_task(self._async_init_timeout())
 
     async def _async_init_timeout(self):
-        await asyncio.sleep(INIT_TIMEOUT)
+        await asyncio.sleep(DEFAULT_INIT_TIMEOUT)
         if self._initializing:
             self._initializing = False
             if not self._available:
-                _LOGGER.info(f"Device {self._name} did not become available after {INIT_TIMEOUT}s, marking as unavailable.")
+                _LOGGER.info(f"Device {self._name} did not become available after {DEFAULT_INIT_TIMEOUT}s, marking as unavailable.")
             self.async_update_listeners()
 
     @callback
