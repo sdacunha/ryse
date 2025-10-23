@@ -69,9 +69,10 @@ class RyseDevice:
                 self._connecting = False
                 raise ConnectionError("No BLEDevice available for connection")
 
-            # Exponential backoff: 10s, 15s, 20s
-            timeouts = [10, 15, 20]
-            backoff_delays = [0, 0.5, 1.0]  # No delay first attempt, then 500ms, 1s
+            # Shorter timeouts for faster response (especially for battery-powered devices in sleep mode)
+            # Try quick first (5s), then normal (10s), then extended (15s)
+            timeouts = [5, 10, 15]
+            backoff_delays = [0, 0.3, 0.5]  # Faster retries: immediate, 300ms, 500ms
 
             for attempt in range(max_attempts):
                 try:

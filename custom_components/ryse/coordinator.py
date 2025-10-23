@@ -85,11 +85,23 @@ class RyseCoordinator(ActiveBluetoothDataUpdateCoordinator):
 
     @callback
     def _handle_unavailable(self, service_info):
-        # ACTION 1: Add logging to confirm this is called
+        """Handle when device stops advertising.
+
+        For battery-powered devices, we're more lenient - they may stop advertising
+        to save power but are still reachable. Only mark as truly unavailable if
+        we haven't heard from them in a very long time (15 minutes).
+        """
+        # If we've received an advertisement recently, don't mark as unavailable yet
+        if self._last_adv:
+            time_since_adv = datetime.now() - self._last_adv
+            # Be lenient - battery devices may not advertise frequently
+            if time_since_adv < timedelta(minutes=15):
+                _LOGGER.debug(f"[Coordinator] {self._name} stopped advertising but was seen {time_since_adv.total_seconds():.0f}s ago, keeping as available")
+                return
+
         _LOGGER.warning(f"[Coordinator] _handle_unavailable called for {self._name} (address: {self.device.address})")
         self._available = False
         self._was_unavailable = True
-        # ACTION 2: Always force state update
         self.async_update_listeners()
 
     @callback
