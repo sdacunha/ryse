@@ -128,16 +128,24 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 address,
                 max_attempts=3,
             )
-            _LOGGER.info(f"Connected to device: {address}")
+            _LOGGER.info(f"Connected to device: {address}, client.is_connected={client.is_connected}")
+            _LOGGER.debug(f"Client details: {client}")
             try:
+                _LOGGER.info(f"Attempting to pair with {address}...")
                 paired = await client.pair()
-                _LOGGER.info(f"Pair result for {address}: {paired}")
+                _LOGGER.info(f"Pair result for {address}: {paired} (type={type(paired)})")
                 if not paired:
                     _LOGGER.error(f"Pairing failed for device: {address}")
+                    await client.disconnect()
                     return self.async_abort(reason="pairing_failed")
-            except NotImplementedError:
-                _LOGGER.error(f"Pairing not supported on this platform for device: {address}, proceeding without explicit pairing.")
-                pass
+            except NotImplementedError as e:
+                _LOGGER.warning(f"Pairing not supported on this platform for device: {address}: {e}, proceeding without explicit pairing.")
+            except Exception as e:
+                _LOGGER.error(f"Pairing exception for {address}: {type(e).__name__}: {e}")
+                import traceback
+                _LOGGER.error(f"Pairing traceback: {traceback.format_exc()}")
+                await client.disconnect()
+                return self.async_abort(reason="pairing_failed")
             await client.disconnect()
             _LOGGER.warning(f"Disconnected from device: {address}")
         except Exception as e:
