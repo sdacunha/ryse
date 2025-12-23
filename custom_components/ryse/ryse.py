@@ -2,6 +2,7 @@ import logging
 import asyncio
 from bleak import BleakClient
 from bleak.backends.device import BLEDevice
+from bleak_retry_connector import establish_connection, BleakNotFoundError
 from .const import HARDCODED_UUIDS
 
 _LOGGER = logging.getLogger(__name__)
@@ -48,7 +49,7 @@ class RyseDevice:
             self.set_ble_device(service_info.device)
 
     async def connect(self, timeout=10, max_attempts=3):
-        """Connect with exponential backoff retry logic and connection state tracking."""
+        """Connect using bleak-retry-connector for reliable connection establishment."""
         async with self._connection_lock:
             # Already connected
             if self.client and self.client.is_connected:
@@ -69,38 +70,32 @@ class RyseDevice:
                 self._connecting = False
                 raise ConnectionError("No BLEDevice available for connection")
 
-            # Shorter timeouts for faster response (especially for battery-powered devices in sleep mode)
-            # Try quick first (5s), then normal (10s), then extended (15s)
-            timeouts = [5, 10, 15]
-            backoff_delays = [0, 0.3, 0.5]  # Faster retries: immediate, 300ms, 500ms
+            try:
+                _LOGGER.info(f"[{self.address}] Connecting via bleak-retry-connector (max_attempts={max_attempts})")
 
-            for attempt in range(max_attempts):
-                try:
-                    attempt_timeout = timeouts[attempt] if attempt < len(timeouts) else timeout
+                self.client = await establish_connection(
+                    BleakClient,
+                    self.ble_device,
+                    self.address,
+                    max_attempts=max_attempts,
+                    timeout=timeout,
+                )
 
-                    # Backoff delay before retry (except first attempt)
-                    if backoff_delays[attempt] > 0:
-                        _LOGGER.debug(f"[{self.address}] Waiting {backoff_delays[attempt]}s before retry {attempt+1}")
-                        await asyncio.sleep(backoff_delays[attempt])
+                if self.client.is_connected:
+                    self._is_connected = True
+                    self._connecting = False
+                    _LOGGER.info(f"[{self.address}] Successfully connected")
+                    return True
 
-                    _LOGGER.info(f"[{self.address}] Connection attempt {attempt+1}/{max_attempts} (timeout: {attempt_timeout}s)")
+            except BleakNotFoundError:
+                _LOGGER.warning(f"[{self.address}] Device not found")
+            except asyncio.TimeoutError:
+                _LOGGER.warning(f"[{self.address}] Connection timed out")
+            except Exception as e:
+                _LOGGER.error(f"[{self.address}] Connection failed: {type(e).__name__}: {e}")
 
-                    self.client = BleakClient(self.ble_device)
-                    await self.client.connect(timeout=attempt_timeout)
-
-                    if self.client.is_connected:
-                        self._is_connected = True
-                        self._connecting = False
-                        _LOGGER.info(f"[{self.address}] Successfully connected on attempt {attempt+1}")
-                        return True
-
-                except asyncio.TimeoutError:
-                    _LOGGER.warning(f"[{self.address}] Connection attempt {attempt+1} timed out after {attempt_timeout}s")
-                except Exception as e:
-                    _LOGGER.error(f"[{self.address}] Connection attempt {attempt+1} failed: {type(e).__name__}: {e}")
-
-            # All attempts failed
-            _LOGGER.error(f"[{self.address}] All {max_attempts} connection attempts failed")
+            # Connection failed
+            _LOGGER.error(f"[{self.address}] Connection attempts failed")
             self._is_connected = False
             self._connecting = False
             for callback in self._unavailable_callbacks:

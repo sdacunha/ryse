@@ -14,6 +14,7 @@ from homeassistant.components.bluetooth import (
     async_discovered_service_info,
 )
 from bleak import BleakClient, BleakError
+from bleak_retry_connector import establish_connection
 from homeassistant.components import bluetooth
 from homeassistant.core import callback
 from .const import DOMAIN, HARDCODED_UUIDS
@@ -121,8 +122,12 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.error(f"Device not found at address: {address}")
                 return self.async_abort(reason="device_not_found")
 
-            client = BleakClient(ble_device)
-            await client.connect(timeout=30.0)
+            client = await establish_connection(
+                BleakClient,
+                ble_device,
+                address,
+                max_attempts=3,
+            )
             _LOGGER.info(f"Connected to device: {address}")
             try:
                 paired = await client.pair()
