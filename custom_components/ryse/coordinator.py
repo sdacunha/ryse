@@ -1,14 +1,12 @@
 from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth.active_update_coordinator import ActiveBluetoothDataUpdateCoordinator
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.const import STATE_UNAVAILABLE
 from datetime import datetime, timedelta
 import asyncio
 import logging
 import inspect
 from .ryse import RyseDevice
 from .const import HARDCODED_UUIDS, DEFAULT_INIT_TIMEOUT
-from homeassistant.exceptions import HomeAssistantError
 
 _LOGGER = logging.getLogger(__name__)
 

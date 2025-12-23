@@ -15,7 +15,6 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from datetime import datetime, timedelta
 from homeassistant.helpers.restore_state import RestoreEntity
-import re
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from .ryse import RyseDevice

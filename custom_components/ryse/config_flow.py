@@ -1,16 +1,8 @@
 from homeassistant import config_entries
 import voluptuous as vol
 import logging
-import asyncio
 from homeassistant.components.bluetooth import (
-    async_get_scanner,
     async_ble_device_from_address,
-    BluetoothServiceInfo,
-    async_register_callback,
-    BluetoothCallbackMatcher,
-    BluetoothChange,
-    BluetoothScanningMode,
-    async_get_bluetooth,
     async_discovered_service_info,
 )
 from bleak import BleakClient, BleakError
