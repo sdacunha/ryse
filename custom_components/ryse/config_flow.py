@@ -115,39 +115,38 @@ class RyseBLEDeviceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if not address:
             return self.async_abort(reason="no_device_selected")
 
-        _LOGGER.info(f"Attempting to pair with RYSE device at address: {address}")
+        _LOGGER.info(f"Attempting to connect to RYSE device at address: {address}")
         try:
+            # Get BLEDevice from Home Assistant (supports Bluetooth proxies)
             ble_device = async_ble_device_from_address(self.hass, address)
             if not ble_device:
                 _LOGGER.error(f"Device not found at address: {address}")
                 return self.async_abort(reason="device_not_found")
 
+            # Connect using establish_connection for reliability with proxies
             client = await establish_connection(
                 BleakClient,
                 ble_device,
                 address,
                 max_attempts=3,
             )
-            _LOGGER.info(f"Connected to device: {address}, client.is_connected={client.is_connected}")
-            _LOGGER.debug(f"Client details: {client}")
+
+            if not client.is_connected:
+                _LOGGER.error(f"Failed to connect to device: {address}")
+                return self.async_abort(reason="cannot_connect")
+
+            _LOGGER.info(f"Connected to device: {address}")
+
+            # Verify we can communicate by subscribing to notifications (like original ryseble)
             try:
-                _LOGGER.info(f"Attempting to pair with {address}...")
-                paired = await client.pair()
-                _LOGGER.info(f"Pair result for {address}: {paired} (type={type(paired)})")
-                if not paired:
-                    _LOGGER.error(f"Pairing failed for device: {address}")
-                    await client.disconnect()
-                    return self.async_abort(reason="pairing_failed")
-            except NotImplementedError as e:
-                _LOGGER.warning(f"Pairing not supported on this platform for device: {address}: {e}, proceeding without explicit pairing.")
+                await client.start_notify(HARDCODED_UUIDS["rx_uuid"], lambda s, d: None)
+                await client.stop_notify(HARDCODED_UUIDS["rx_uuid"])
+                _LOGGER.info(f"Verified communication with device: {address}")
             except Exception as e:
-                _LOGGER.error(f"Pairing exception for {address}: {type(e).__name__}: {e}")
-                import traceback
-                _LOGGER.error(f"Pairing traceback: {traceback.format_exc()}")
-                await client.disconnect()
-                return self.async_abort(reason="pairing_failed")
+                _LOGGER.warning(f"Could not verify notifications for {address}: {e}, proceeding anyway")
+
             await client.disconnect()
-            _LOGGER.warning(f"Disconnected from device: {address}")
+            _LOGGER.info(f"Disconnected from device: {address}")
         except Exception as e:
             _LOGGER.error(f"Failed to pair with RYSE device {address}: {e}")
             return self.async_abort(reason="pairing_failed")
